@@ -3,12 +3,15 @@
 //! AppState 定义（DB Pool, Redis, 各模块 Handle）
 
 use keycompute_auth::{ApiKeyValidator, AuthService};
+use keycompute_provider_trait::ProviderAdapter;
 use keycompute_runtime::AccountStateStore;
 use keycompute_routing::RoutingEngine;
+use llm_gateway::{GatewayBuilder, GatewayExecutor};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// 应用状态
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AppState {
     /// 认证服务
     pub auth: Arc<AuthService>,
@@ -20,9 +23,23 @@ pub struct AppState {
     pub account_states: Arc<AccountStateStore>,
     /// 路由引擎
     pub routing: Arc<RoutingEngine>,
+    /// Gateway 执行器（唯一执行层）
+    pub gateway: Arc<GatewayExecutor>,
     // TODO: 添加其他模块服务
-    // pub gateway: Arc<llm_gateway::GatewayExecutor>,
     // pub billing: Arc<keycompute_billing::BillingService>,
+}
+
+impl std::fmt::Debug for AppState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppState")
+            .field("auth", &"<AuthService>")
+            .field("rate_limiter", &"<RateLimitService>")
+            .field("pricing", &"<PricingService>")
+            .field("account_states", &self.account_states)
+            .field("routing", &"<RoutingEngine>")
+            .field("gateway", &"<GatewayExecutor>")
+            .finish()
+    }
 }
 
 impl AppState {
@@ -41,12 +58,53 @@ impl AppState {
         // 创建路由引擎
         let routing_engine = Arc::new(RoutingEngine::new(Arc::clone(&account_states)));
 
+        // 创建 Gateway 执行器
+        let gateway = Arc::new(
+            GatewayBuilder::new()
+                .add_provider("openai", Arc::new(keycompute_openai::OpenAIProvider::new()))
+                // TODO: 添加更多 Provider（deepseek, claude, gemini 等）
+                .build(),
+        );
+
         Self {
             auth: Arc::new(auth_service),
             rate_limiter: Arc::new(keycompute_ratelimit::RateLimitService::default_memory()),
             pricing: Arc::new(pricing_service),
-            account_states,
+            account_states: Arc::clone(&account_states),
             routing: routing_engine,
+            gateway,
+        }
+    }
+
+    /// 创建用于测试的应用状态，使用自定义 Provider
+    pub fn with_providers(providers: HashMap<String, Arc<dyn ProviderAdapter>>) -> Self {
+        // 创建 API Key 验证器
+        let api_key_validator = ApiKeyValidator::new("default-secret");
+        let auth_service = AuthService::new(api_key_validator);
+
+        // 创建定价服务
+        let pricing_service = keycompute_pricing::PricingService::new();
+
+        // 创建运行时状态存储
+        let account_states = Arc::new(AccountStateStore::new());
+
+        // 创建路由引擎
+        let routing_engine = Arc::new(RoutingEngine::new(Arc::clone(&account_states)));
+
+        // 创建 Gateway 执行器，使用自定义 Provider
+        let mut builder = GatewayBuilder::new();
+        for (name, provider) in providers {
+            builder = builder.add_provider(name, provider);
+        }
+        let gateway = Arc::new(builder.build());
+
+        Self {
+            auth: Arc::new(auth_service),
+            rate_limiter: Arc::new(keycompute_ratelimit::RateLimitService::default_memory()),
+            pricing: Arc::new(pricing_service),
+            account_states: Arc::clone(&account_states),
+            routing: routing_engine,
+            gateway,
         }
     }
 }

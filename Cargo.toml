@@ -23,6 +23,7 @@ keycompute-pricing = { path = "crates/keycompute-pricing" }
 keycompute-routing = { path = "crates/keycompute-routing" }
 keycompute-provider-trait = { path = "crates/llm-provider/keycompute-provider-trait" }
 keycompute-openai = { path = "crates/llm-provider/keycompute-openai" }
+keycompute-deepseek = { path = "crates/llm-provider/keycompute-deepseek" }
 llm-gateway = { path = "crates/llm-gateway" }
 keycompute-billing = { path = "crates/keycompute-billing" }
 keycompute-distribution = { path = "crates/keycompute-distribution" }

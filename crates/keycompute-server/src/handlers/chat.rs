@@ -158,13 +158,15 @@ pub async fn chat_completions(
         "Routing decision made"
     );
 
-    // TODO: 4. 执行（唯一执行层）
-    // let (tx, rx) = tokio::sync::mpsc::channel(100);
-    // let executor = state.gateway.clone();
-    // ...
+    // 4. 执行（唯一执行层）- 通过 GatewayExecutor
+    let rx = state
+        .gateway
+        .execute(ctx, plan, Arc::clone(&state.account_states))
+        .await
+        .map_err(|e| crate::error::ApiError::Internal(format!("Execution failed: {}", e)))?;
 
-    // 5. 返回 SSE 流（简化实现，包含路由信息）
-    let stream = create_mock_stream_with_routing(ctx, request.model, plan);
+    // 5. 返回 SSE 流
+    let stream = create_gateway_stream(rx);
 
     Ok(Sse::new(stream))
 }
@@ -303,6 +305,50 @@ fn create_mock_stream_with_routing(
         .chain(stream::once(async {
             Ok(Event::default().data("[DONE]"))
         }))
+}
+
+/// 将 Gateway 的 StreamEvent 转换为 Axum SSE Event
+fn create_gateway_stream(
+    mut rx: tokio::sync::mpsc::Receiver<keycompute_provider_trait::StreamEvent>,
+) -> impl Stream<Item = std::result::Result<Event, Infallible>> {
+    use futures::stream::{self, StreamExt};
+
+    async_stream::stream! {
+        while let Some(event) = rx.recv().await {
+            match event {
+                keycompute_provider_trait::StreamEvent::Delta { content, finish_reason } => {
+                    let chunk = StreamChunk {
+                        id: format!("chatcmpl-{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("")),
+                        object: "chat.completion.chunk".to_string(),
+                        created: chrono::Utc::now().timestamp(),
+                        model: "gpt-4o".to_string(), // TODO: 从 context 获取
+                        choices: vec![StreamChoice {
+                            index: 0,
+                            delta: DeltaContent {
+                                role: if finish_reason.is_none() { Some("assistant".to_string()) } else { None },
+                                content: Some(content),
+                            },
+                            finish_reason,
+                        }],
+                    };
+                    let data = serde_json::to_string(&chunk).unwrap();
+                    yield Ok(Event::default().data(data));
+                }
+                keycompute_provider_trait::StreamEvent::Done => {
+                    yield Ok(Event::default().data("[DONE]"));
+                    break;
+                }
+                keycompute_provider_trait::StreamEvent::Error { message } => {
+                    let error_chunk = serde_json::json!({
+                        "error": { "message": message }
+                    });
+                    yield Ok(Event::default().data(error_chunk.to_string()));
+                    break;
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 #[cfg(test)]

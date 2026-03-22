@@ -3,21 +3,26 @@
 //! 验证数据链路：API Server -> Auth -> Rate Limit -> RequestContext
 
 use integration_tests::common::{TestContext, VerificationChain, TEST_API_KEY};
+use integration_tests::mocks::provider::MockProviderFactory;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use keycompute_server::state::AppState;
 use keycompute_server::create_router;
 use serde_json::json;
+use std::collections::HashMap;
+use std::sync::Arc;
 use tower::ServiceExt;
 
 /// 测试完整的 API 请求流程
 #[tokio::test]
 async fn test_api_request_flow() {
-    let ctx = TestContext::new();
+    let _ctx = TestContext::new();
     let mut chain = VerificationChain::new();
 
-    // 1. 创建应用状态和路由
-    let state = AppState::new();
+    // 1. 创建应用状态和路由（使用 Mock Provider）
+    let mut providers = HashMap::new();
+    providers.insert("openai".to_string(), Arc::new(MockProviderFactory::create_openai()) as Arc<dyn keycompute_provider_trait::ProviderAdapter>);
+    let state = AppState::with_providers(providers);
     let app = create_router(state);
 
     chain.add_step(
