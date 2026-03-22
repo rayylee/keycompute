@@ -1,0 +1,37 @@
+[package]
+name = "keycompute-server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+keycompute-types = { workspace = true }
+keycompute-db = { workspace = true }
+keycompute-auth = { workspace = true }
+keycompute-ratelimit = { workspace = true }
+keycompute-pricing = { workspace = true }
+keycompute-routing = { workspace = true }
+keycompute-runtime = { workspace = true }
+keycompute-billing = { workspace = true }
+keycompute-distribution = { workspace = true }
+keycompute-observability = { workspace = true }
+llm-gateway = { workspace = true }
+keycompute-provider-trait = { workspace = true }
+keycompute-openai = { workspace = true }
+
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+rust_decimal = "1.35"
+tracing = "0.1"
+futures = "0.3"
+tokio-stream = "0.1"
+async-trait = "0.1"
+
+[dev-dependencies]
+tokio-test = "0.4"
+reqwest = { version = "0.12", features = ["json"] }

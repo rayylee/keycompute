@@ -62,7 +62,7 @@ cargo fmt --check
 | P4 | Auth, RateLimit, Pricing, Routing | ✅ |
 | P5 | llm-gateway | ✅ |
 | P6 | Billing, Distribution | ✅ |
-| P7 | keycompute-server | ⏳ |
+| P7 | keycompute-server | ✅ |
 | P8 | 其他 Provider | ⏳ |
 | P9 | 前端 | ⏳ |
 
