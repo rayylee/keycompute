@@ -2917,6 +2917,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "integration-tests"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "chrono",
+ "dashmap",
+ "futures",
+ "keycompute-auth",
+ "keycompute-billing",
+ "keycompute-db",
+ "keycompute-distribution",
+ "keycompute-observability",
+ "keycompute-openai",
+ "keycompute-pricing",
+ "keycompute-provider-trait",
+ "keycompute-ratelimit",
+ "keycompute-routing",
+ "keycompute-runtime",
+ "keycompute-server",
+ "keycompute-types",
+ "llm-gateway",
+ "once_cell",
+ "reqwest",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tokio-test",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "inventory"
 version = "0.3.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
