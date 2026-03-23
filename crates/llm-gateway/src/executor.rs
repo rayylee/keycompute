@@ -184,6 +184,21 @@ impl GatewayExecutor {
         // 粗略估算：1 token ≈ 4 个字符
         ((content.len() / 4) as u32).max(1)
     }
+
+    /// 获取所有 Provider 名称列表
+    pub fn list_providers(&self) -> Vec<String> {
+        self.providers.keys().cloned().collect()
+    }
+
+    /// 检查是否存在指定的 Provider
+    pub fn has_provider(&self, name: &str) -> bool {
+        self.providers.contains_key(name)
+    }
+
+    /// 获取 Provider 数量
+    pub fn provider_count(&self) -> usize {
+        self.providers.len()
+    }
 }
 
 #[cfg(test)]

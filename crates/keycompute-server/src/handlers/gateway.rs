@@ -52,20 +52,22 @@ impl Default for GatewayConfigInfo {
 
 /// 获取 Gateway 状态
 pub async fn get_gateway_status(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
 ) -> Result<Json<GatewayStatusResponse>> {
-    // TODO: 从 GatewayExecutor 获取真实的 Provider 列表和状态
-    // 目前返回模拟数据
-    let providers = vec![ProviderInfo {
-        name: "openai".to_string(),
-        supported_models: vec![
-            "gpt-4o".to_string(),
-            "gpt-4o-mini".to_string(),
-            "gpt-4-turbo".to_string(),
-            "gpt-3.5-turbo".to_string(),
-        ],
-        healthy: true,
-    }];
+    // 从 GatewayExecutor 获取 Provider 列表
+    let providers: Vec<ProviderInfo> = state
+        .gateway
+        .list_providers()
+        .into_iter()
+        .map(|name| {
+            let health = state.provider_health.get_health(&name);
+            ProviderInfo {
+                name: name.clone(),
+                supported_models: vec![], // TODO: 从 Provider 获取支持的模型
+                healthy: health.as_ref().map(|h| h.healthy).unwrap_or(true),
+            }
+        })
+        .collect();
 
     Ok(Json(GatewayStatusResponse {
         available: !providers.is_empty(),
@@ -100,28 +102,49 @@ pub struct ProviderHealthResponse {
 
 /// 检查 Provider 健康状态
 pub async fn check_provider_health(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Json(request): Json<ProviderHealthRequest>,
 ) -> Result<Json<ProviderHealthResponse>> {
-    // TODO: 实现真实的健康检查逻辑
-    // 目前返回模拟数据
-    let healthy = request.provider == "openai";
+    // 从 ProviderHealthStore 获取真实健康状态
+    let health = state.provider_health.get_health(&request.provider);
 
-    Ok(Json(ProviderHealthResponse {
-        provider: request.provider,
-        healthy,
-        latency_ms: if healthy { Some(150) } else { None },
-        error: if healthy {
-            None
-        } else {
-            Some("Provider not configured".to_string())
-        },
-        models: if healthy {
-            vec!["gpt-4o".to_string(), "gpt-4o-mini".to_string()]
-        } else {
-            vec![]
-        },
-    }))
+    // 检查 Provider 是否在 Gateway 中配置
+    let configured = state.gateway.has_provider(&request.provider);
+
+    if let Some(health) = health {
+        Ok(Json(ProviderHealthResponse {
+            provider: request.provider,
+            healthy: health.healthy,
+            latency_ms: Some(health.avg_latency_ms),
+            error: if health.healthy {
+                None
+            } else {
+                Some(format!(
+                    "Success rate too low: {:.1}%",
+                    health.success_rate
+                ))
+            },
+            models: vec![], // TODO: 从 Provider 获取支持的模型
+        }))
+    } else if configured {
+        // Provider 已配置但还没有请求记录，默认健康
+        Ok(Json(ProviderHealthResponse {
+            provider: request.provider,
+            healthy: true,
+            latency_ms: None,
+            error: None,
+            models: vec![],
+        }))
+    } else {
+        // Provider 未配置
+        Ok(Json(ProviderHealthResponse {
+            provider: request.provider,
+            healthy: false,
+            latency_ms: None,
+            error: Some("Provider not configured".to_string()),
+            models: vec![],
+        }))
+    }
 }
 
 /// 执行统计信息
@@ -155,26 +178,50 @@ pub struct ProviderStats {
 }
 
 /// 获取执行统计
-pub async fn get_execution_stats(State(_state): State<AppState>) -> Result<Json<ExecutionStats>> {
-    // TODO: 从 GatewayExecutor 获取真实的统计数据
-    // 目前返回模拟数据
+pub async fn get_execution_stats(State(state): State<AppState>) -> Result<Json<ExecutionStats>> {
+    // 从 ProviderHealthStore 获取真实统计数据
+    let all_health = state.provider_health.all_health();
+
+    let mut total_requests = 0u64;
+    let mut successful_requests = 0u64;
+    let mut failed_requests = 0u64;
+    let mut total_latency = 0u64;
+    let mut latency_count = 0u64;
     let mut provider_stats = HashMap::new();
-    provider_stats.insert(
-        "openai".to_string(),
-        ProviderStats {
-            requests: 100,
-            successes: 95,
-            failures: 5,
-            avg_latency_ms: 150,
-        },
-    );
+
+    for health in all_health {
+        total_requests += health.total_requests;
+        successful_requests += health.success_requests;
+        failed_requests += health.failed_requests;
+
+        if health.avg_latency_ms > 0 {
+            total_latency += health.avg_latency_ms;
+            latency_count += 1;
+        }
+
+        provider_stats.insert(
+            health.name.clone(),
+            ProviderStats {
+                requests: health.total_requests,
+                successes: health.success_requests,
+                failures: health.failed_requests,
+                avg_latency_ms: health.avg_latency_ms,
+            },
+        );
+    }
+
+    let avg_latency_ms = if latency_count > 0 {
+        total_latency / latency_count
+    } else {
+        0
+    };
 
     Ok(Json(ExecutionStats {
-        total_requests: 100,
-        successful_requests: 95,
-        failed_requests: 5,
-        fallback_count: 3,
-        avg_latency_ms: 150,
+        total_requests,
+        successful_requests,
+        failed_requests,
+        fallback_count: 0, // TODO: 从 Gateway 获取 fallback 统计
+        avg_latency_ms,
         provider_stats,
     }))
 }
