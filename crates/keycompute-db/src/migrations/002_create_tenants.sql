@@ -5,6 +5,10 @@ CREATE TABLE tenants (
     slug VARCHAR(100) NOT NULL UNIQUE,
     description TEXT,
     status VARCHAR(50) NOT NULL DEFAULT 'active',
+    -- 租户配置
+    default_rpm_limit INTEGER NOT NULL DEFAULT 60,
+    default_tpm_limit INTEGER NOT NULL DEFAULT 100000,
+    distribution_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

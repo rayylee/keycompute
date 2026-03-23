@@ -10,9 +10,11 @@ pub mod user;
 pub use api_key::{ApiKeyAuth, ApiKeyValidator};
 pub use jwt::{JwtClaims, JwtValidator};
 pub use permission::{Permission, PermissionChecker};
-pub use user::{UserInfo, UserService};
+pub use user::{TenantConfig, TenantInfo, UserInfo, UserService};
 
 use keycompute_types::{KeyComputeError, Result};
+use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 
 /// 认证上下文
@@ -30,23 +32,42 @@ pub struct AuthContext {
     pub role: String,
     /// 权限列表
     pub permissions: Vec<Permission>,
+    /// 用户信息（可选，延迟加载）
+    pub user_info: Option<UserInfo>,
+    /// 租户信息（可选，延迟加载）
+    pub tenant_info: Option<TenantInfo>,
 }
 
 impl AuthContext {
     /// 创建新的认证上下文
-    pub fn new(
-        user_id: Uuid,
-        tenant_id: Uuid,
-        api_key_id: Uuid,
-        role: impl Into<String>,
-    ) -> Self {
+    pub fn new(user_id: Uuid, tenant_id: Uuid, api_key_id: Uuid, role: impl Into<String>) -> Self {
         Self {
             user_id,
             tenant_id,
             api_key_id,
             role: role.into(),
             permissions: Vec::new(),
+            user_info: None,
+            tenant_info: None,
         }
+    }
+
+    /// 创建带权限的认证上下文
+    pub fn with_permissions(mut self, permissions: Vec<Permission>) -> Self {
+        self.permissions = permissions;
+        self
+    }
+
+    /// 创建带用户信息的认证上下文
+    pub fn with_user_info(mut self, user_info: UserInfo) -> Self {
+        self.user_info = Some(user_info);
+        self
+    }
+
+    /// 创建带租户信息的认证上下文
+    pub fn with_tenant_info(mut self, tenant_info: TenantInfo) -> Self {
+        self.tenant_info = Some(tenant_info);
+        self
     }
 
     /// 检查是否有指定权限
@@ -58,15 +79,44 @@ impl AuthContext {
     pub fn is_admin(&self) -> bool {
         self.role == "admin"
     }
+
+    /// 是否是租户管理员
+    pub fn is_tenant_admin(&self) -> bool {
+        self.role == "tenant_admin" || self.role == "admin"
+    }
+
+    /// 获取用户信息（如果已加载）
+    pub fn user_info(&self) -> Option<&UserInfo> {
+        self.user_info.as_ref()
+    }
+
+    /// 获取租户信息（如果已加载）
+    pub fn tenant_info(&self) -> Option<&TenantInfo> {
+        self.tenant_info.as_ref()
+    }
 }
 
 /// 认证服务
 ///
 /// 统一处理 API Key 和 JWT 认证
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AuthService {
+    /// API Key 验证器
     api_key_validator: ApiKeyValidator,
+    /// JWT 验证器
     jwt_validator: Option<JwtValidator>,
+    /// 用户服务
+    user_service: Option<UserService>,
+}
+
+impl std::fmt::Debug for AuthService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AuthService")
+            .field("api_key_validator", &self.api_key_validator)
+            .field("jwt_validator", &self.jwt_validator)
+            .field("user_service", &self.user_service)
+            .finish()
+    }
 }
 
 impl AuthService {
@@ -75,6 +125,7 @@ impl AuthService {
         Self {
             api_key_validator,
             jwt_validator: None,
+            user_service: None,
         }
     }
 
@@ -82,6 +133,29 @@ impl AuthService {
     pub fn with_jwt(mut self, jwt_validator: JwtValidator) -> Self {
         self.jwt_validator = Some(jwt_validator);
         self
+    }
+
+    /// 创建带 UserService 的 AuthService
+    pub fn with_user_service(mut self, user_service: UserService) -> Self {
+        self.user_service = Some(user_service);
+        self
+    }
+
+    /// 创建完整的 AuthService（带数据库连接）
+    pub fn with_pool(pool: Arc<PgPool>) -> Self {
+        let api_key_validator = ApiKeyValidator::with_pool(Arc::clone(&pool));
+        let user_service = UserService::with_pool(Arc::clone(&pool));
+
+        Self {
+            api_key_validator,
+            jwt_validator: None,
+            user_service: Some(user_service),
+        }
+    }
+
+    /// 设置 JWT 验证器
+    pub fn set_jwt_validator(&mut self, jwt_validator: JwtValidator) {
+        self.jwt_validator = Some(jwt_validator);
     }
 
     /// 验证 API Key
@@ -98,6 +172,73 @@ impl AuthService {
             )),
         }
     }
+
+    /// 验证 Token（自动检测是 API Key 还是 JWT）
+    pub async fn verify_token(&self, token: &str) -> Result<AuthContext> {
+        // API Key 格式: sk-xxxx
+        if token.starts_with("sk-") {
+            return self.verify_api_key(token).await;
+        }
+
+        // 尝试 JWT 验证
+        self.verify_jwt(token)
+    }
+
+    /// 加载用户详细信息
+    pub async fn load_user_details(&self, ctx: &mut AuthContext) -> Result<()> {
+        if let Some(user_service) = &self.user_service {
+            let user_info = user_service.load_user(ctx.user_id).await?;
+            ctx.user_info = Some(user_info);
+        }
+        Ok(())
+    }
+
+    /// 加载租户详细信息
+    pub async fn load_tenant_details(&self, ctx: &mut AuthContext) -> Result<()> {
+        if let Some(user_service) = &self.user_service {
+            let tenant_info = user_service.load_tenant(ctx.tenant_id).await?;
+            ctx.tenant_info = Some(tenant_info);
+        }
+        Ok(())
+    }
+
+    /// 加载用户和租户详细信息
+    pub async fn load_full_context(&self, ctx: &mut AuthContext) -> Result<()> {
+        self.load_user_details(ctx).await?;
+        self.load_tenant_details(ctx).await?;
+        Ok(())
+    }
+
+    /// 验证 API Key 并加载完整上下文
+    pub async fn verify_api_key_with_context(&self, key: &str) -> Result<AuthContext> {
+        let mut ctx = self.verify_api_key(key).await?;
+        self.load_full_context(&mut ctx).await?;
+        Ok(ctx)
+    }
+
+    /// 验证用户是否属于指定租户
+    pub async fn validate_user_tenant(
+        &self,
+        user_id: Uuid,
+        expected_tenant_id: Uuid,
+    ) -> Result<()> {
+        if let Some(user_service) = &self.user_service {
+            user_service
+                .load_user_with_tenant_validation(user_id, expected_tenant_id)
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// 检查租户是否激活
+    pub async fn is_tenant_active(&self, tenant_id: Uuid) -> Result<bool> {
+        if let Some(user_service) = &self.user_service {
+            let tenant = user_service.load_tenant(tenant_id).await?;
+            return Ok(tenant.is_active());
+        }
+        // 无数据库连接时默认返回 true
+        Ok(true)
+    }
 }
 
 #[cfg(test)]
@@ -106,12 +247,7 @@ mod tests {
 
     #[test]
     fn test_auth_context() {
-        let ctx = AuthContext::new(
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-            "user",
-        );
+        let ctx = AuthContext::new(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), "user");
 
         assert!(!ctx.is_admin());
         assert!(!ctx.has_permission(&Permission::ManageUsers));
@@ -119,14 +255,66 @@ mod tests {
 
     #[test]
     fn test_auth_context_admin() {
+        let ctx = AuthContext::new(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), "admin");
+
+        assert!(ctx.is_admin());
+        assert!(ctx.has_permission(&Permission::ManageUsers));
+    }
+
+    #[test]
+    fn test_auth_context_with_permissions() {
+        let ctx = AuthContext::new(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), "user")
+            .with_permissions(vec![Permission::UseApi, Permission::ViewUsage]);
+
+        assert!(ctx.has_permission(&Permission::UseApi));
+        assert!(ctx.has_permission(&Permission::ViewUsage));
+        assert!(!ctx.has_permission(&Permission::ManageUsers));
+    }
+
+    #[test]
+    fn test_auth_context_tenant_admin() {
         let ctx = AuthContext::new(
             Uuid::new_v4(),
             Uuid::new_v4(),
             Uuid::new_v4(),
-            "admin",
+            "tenant_admin",
         );
 
-        assert!(ctx.is_admin());
-        assert!(ctx.has_permission(&Permission::ManageUsers));
+        assert!(ctx.is_tenant_admin());
+        assert!(!ctx.is_admin());
+    }
+
+    #[tokio::test]
+    async fn test_auth_service_verify_api_key() {
+        let auth_service = AuthService::new(ApiKeyValidator::default());
+        let key = ApiKeyValidator::generate_key();
+        let result = auth_service.verify_api_key(&key).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_auth_service_verify_token_api_key() {
+        let auth_service = AuthService::new(ApiKeyValidator::default());
+        let key = ApiKeyValidator::generate_key();
+        let result = auth_service.verify_token(&key).await;
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_auth_service_verify_jwt() {
+        let jwt_validator = JwtValidator::new("secret", "keycompute");
+        let auth_service = AuthService::new(ApiKeyValidator::default()).with_jwt(jwt_validator);
+
+        let user_id = Uuid::new_v4();
+        let tenant_id = Uuid::new_v4();
+        let token = auth_service
+            .jwt_validator
+            .as_ref()
+            .unwrap()
+            .generate_token(user_id, tenant_id, "user")
+            .unwrap();
+
+        let result = auth_service.verify_jwt(&token);
+        assert!(result.is_ok());
     }
 }

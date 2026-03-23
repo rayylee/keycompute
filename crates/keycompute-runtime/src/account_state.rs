@@ -294,14 +294,17 @@ mod tests {
 
         // id1 第一次错误（阈值是1，所以一次错误就会冷却）
         store.mark_error(id1);
-        
+
         // 注意：第一次错误时，or_insert_with 创建的新状态 error_count=1
         // 但不会立即触发冷却，因为 or_insert_with 不会执行 and_modify 中的逻辑
         // 需要第二次错误才会触发冷却
         store.mark_error(id1);
-        
+
         // 验证 id1 确实在冷却中
-        assert!(store.is_cooling_down(&id1), "id1 should be cooling down after 2 errors");
+        assert!(
+            store.is_cooling_down(&id1),
+            "id1 should be cooling down after 2 errors"
+        );
 
         let available = store.available_accounts(&[id1, id2]);
         assert_eq!(available.len(), 1);

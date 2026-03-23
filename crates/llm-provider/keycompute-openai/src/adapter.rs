@@ -4,14 +4,12 @@
 
 use async_trait::async_trait;
 use futures::StreamExt;
-use keycompute_provider_trait::{
-    ProviderAdapter, StreamBox, StreamEvent, UpstreamRequest,
-};
+use keycompute_provider_trait::{ProviderAdapter, StreamBox, StreamEvent, UpstreamRequest};
 use keycompute_types::{KeyComputeError, Result};
 use reqwest::Client;
 use std::time::Duration;
 
-use crate::protocol::{OpenAIRequest, OpenAIResponse, OpenAIMessage, StreamOptions};
+use crate::protocol::{OpenAIMessage, OpenAIRequest, OpenAIResponse, StreamOptions};
 use crate::stream::parse_openai_stream;
 
 /// OpenAI Provider 适配器
@@ -103,10 +101,9 @@ impl OpenAIProvider {
             )));
         }
 
-        let openai_response: OpenAIResponse = response
-            .json()
-            .await
-            .map_err(|e| KeyComputeError::ProviderError(format!("Failed to parse response: {}", e)))?;
+        let openai_response: OpenAIResponse = response.json().await.map_err(|e| {
+            KeyComputeError::ProviderError(format!("Failed to parse response: {}", e))
+        })?;
 
         // 提取内容
         let content = openai_response
@@ -177,8 +174,9 @@ impl ProviderAdapter for OpenAIProvider {
             let content = self.chat_internal(request).await?;
             let event = StreamEvent::delta(content);
 
-            let stream = futures::stream::once(async move { Ok(event) })
-                .chain(futures::stream::once(async move { Ok(StreamEvent::done()) }));
+            let stream = futures::stream::once(async move { Ok(event) }).chain(
+                futures::stream::once(async move { Ok(StreamEvent::done()) }),
+            );
 
             Ok(Box::pin(stream))
         }

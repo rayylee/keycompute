@@ -77,8 +77,7 @@ impl ProviderHealth {
     /// 更新成功率
     fn update_success_rate(&mut self) {
         if self.total_requests > 0 {
-            self.success_rate =
-                (self.success_requests as f64 / self.total_requests as f64) * 100.0;
+            self.success_rate = (self.success_requests as f64 / self.total_requests as f64) * 100.0;
         }
 
         // 如果成功率低于阈值，标记为不健康
@@ -220,9 +219,8 @@ impl ProviderHealthStore {
         let now = Instant::now();
         let before = self.health_map.len();
 
-        self.health_map.retain(|_, health| {
-            now.duration_since(health.last_updated) < max_age
-        });
+        self.health_map
+            .retain(|_, health| now.duration_since(health.last_updated) < max_age);
 
         let after = self.health_map.len();
         if before != after {
@@ -299,7 +297,11 @@ mod tests {
         // 健康评分基于成功率和延迟
         // 100% 成功率 + 低延迟(<100ms) = 100 分
         let score = store.get_score("openai");
-        assert!(score >= 90 && score <= 100, "Expected score around 100, got {}", score);
+        assert!(
+            score >= 90 && score <= 100,
+            "Expected score around 100, got {}",
+            score
+        );
 
         // 不存在的 Provider 默认健康，评分中等
         assert!(store.is_healthy("unknown"));

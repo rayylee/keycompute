@@ -69,7 +69,10 @@ mod tests {
     #[test]
     fn test_usage_source_as_str() {
         assert_eq!(UsageSource::ProviderReported.as_str(), "provider_reported");
-        assert_eq!(UsageSource::GatewayAccumulated.as_str(), "gateway_accumulated");
+        assert_eq!(
+            UsageSource::GatewayAccumulated.as_str(),
+            "gateway_accumulated"
+        );
     }
 
     #[test]
@@ -87,7 +90,9 @@ mod tests {
 
     #[test]
     fn test_usage_source_priority() {
-        assert!(UsageSource::ProviderReported.priority() < UsageSource::GatewayAccumulated.priority());
+        assert!(
+            UsageSource::ProviderReported.priority() < UsageSource::GatewayAccumulated.priority()
+        );
     }
 
     #[test]

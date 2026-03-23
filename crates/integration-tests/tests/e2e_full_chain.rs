@@ -1,22 +1,22 @@
 //! 完整链路端到端测试
 //!
 //! 验证数据链路：
-//! Client -> API Server -> Auth -> Rate Limit -> Pricing -> Routing -> 
+//! Client -> API Server -> Auth -> Rate Limit -> Pricing -> Routing ->
 //! Runtime -> Gateway -> Provider -> Streaming -> Billing -> Distribution
 
 use integration_tests::common::{TestContext, VerificationChain};
-use integration_tests::mocks::provider::MockProviderFactory;
-use integration_tests::mocks::database::{MockDatabase, MockUsageLog, MockDistributionRecord};
 use integration_tests::mocks::MockExecutionContext;
+use integration_tests::mocks::database::{MockDatabase, MockDistributionRecord, MockUsageLog};
+use integration_tests::mocks::provider::MockProviderFactory;
 
-use keycompute_types::{Message, PricingSnapshot, RequestContext, UsageAccumulator};
-use keycompute_runtime::AccountStateStore;
 use keycompute_billing::calculate_amount;
 use keycompute_provider_trait::ProviderAdapter;
+use keycompute_runtime::AccountStateStore;
+use keycompute_types::{Message, PricingSnapshot, RequestContext, UsageAccumulator};
 
+use futures::StreamExt;
 use rust_decimal::Decimal;
 use std::sync::Arc;
-use futures::StreamExt;
 
 /// 测试完整的请求处理链路
 #[tokio::test]
@@ -70,19 +70,21 @@ async fn test_full_request_chain() {
     chain.add_step(
         "integration-tests::mocks",
         "MockProvider::create_openai",
-        format!("Provider: {}, Models: {:?}", provider.name(), provider.supported_models()),
+        format!(
+            "Provider: {}, Models: {:?}",
+            provider.name(),
+            provider.supported_models()
+        ),
         provider.name() == "openai",
     );
 
     // 4. 执行 Provider 请求（模拟 Gateway 行为）
-    let upstream_request = keycompute_provider_trait::UpstreamRequest::new(
-        "http://mock-openai",
-        "mock-key",
-        "gpt-4o",
-    )
-    .with_message("user", "Hello");
+    let upstream_request =
+        keycompute_provider_trait::UpstreamRequest::new("http://mock-openai", "mock-key", "gpt-4o")
+            .with_message("user", "Hello");
 
-    let mut stream: keycompute_provider_trait::StreamBox = provider.stream_chat(upstream_request).await.unwrap();
+    let mut stream: keycompute_provider_trait::StreamBox =
+        provider.stream_chat(upstream_request).await.unwrap();
     let mut delta_count = 0;
     let mut usage_event = None;
 
@@ -93,7 +95,10 @@ async fn test_full_request_chain() {
                 // 模拟 Token 累积
                 request_context.usage.add_output(estimate_tokens(&content));
             }
-            keycompute_provider_trait::StreamEvent::Usage { input_tokens, output_tokens } => {
+            keycompute_provider_trait::StreamEvent::Usage {
+                input_tokens,
+                output_tokens,
+            } => {
                 request_context.usage.set_input(input_tokens);
                 usage_event = Some((input_tokens, output_tokens));
             }
@@ -120,7 +125,7 @@ async fn test_full_request_chain() {
 
     // 6. 计费计算
     let user_amount = calculate_amount(input_tokens, output_tokens, &pricing);
-    
+
     chain.add_step(
         "keycompute-billing",
         "BillingCalculator::calculate",
@@ -156,7 +161,7 @@ async fn test_full_request_chain() {
     let beneficiary = uuid::Uuid::new_v4();
     let ratio = Decimal::from_f64_retain(0.5).unwrap();
     let distribution_record = MockDistributionRecord::new(&usage_log, beneficiary, ratio);
-    
+
     db.insert_distribution_record(distribution_record.clone());
 
     chain.add_step(
@@ -173,7 +178,11 @@ async fn test_full_request_chain() {
     chain.add_step(
         "integration-tests::verification",
         "verify_database_state",
-        format!("Usage logs: {}, Distribution records: {}", logs.len(), records.len()),
+        format!(
+            "Usage logs: {}, Distribution records: {}",
+            logs.len(),
+            records.len()
+        ),
         logs.len() == 1 && records.len() == 1,
     );
 
@@ -187,7 +196,10 @@ async fn test_full_request_chain() {
     );
 
     chain.print_report();
-    assert!(chain.all_passed(), "Some full chain verification steps failed");
+    assert!(
+        chain.all_passed(),
+        "Some full chain verification steps failed"
+    );
 }
 
 /// 测试 Fallback 链路
@@ -207,13 +219,11 @@ async fn test_fallback_chain() {
     );
 
     // 2. 模拟 Primary Provider 失败
-    let upstream_request = keycompute_provider_trait::UpstreamRequest::new(
-        "http://mock",
-        "mock-key",
-        "gpt-4o",
-    );
+    let upstream_request =
+        keycompute_provider_trait::UpstreamRequest::new("http://mock", "mock-key", "gpt-4o");
 
-    let primary_result: Result<keycompute_provider_trait::StreamBox, _> = failing_provider.stream_chat(upstream_request.clone()).await;
+    let primary_result: Result<keycompute_provider_trait::StreamBox, _> =
+        failing_provider.stream_chat(upstream_request.clone()).await;
     chain.add_step(
         "llm-gateway (simulated)",
         "primary_provider_failure",
@@ -222,7 +232,8 @@ async fn test_fallback_chain() {
     );
 
     // 3. 模拟 Fallback 到备用 Provider
-    let fallback_result: Result<keycompute_provider_trait::StreamBox, _> = success_provider.stream_chat(upstream_request).await;
+    let fallback_result: Result<keycompute_provider_trait::StreamBox, _> =
+        success_provider.stream_chat(upstream_request).await;
     chain.add_step(
         "llm-gateway (simulated)",
         "fallback_provider_success",
@@ -286,13 +297,23 @@ fn test_multi_tenant_isolation() {
 
     // 3. 验证租户数据隔离
     let all_logs = db.get_usage_logs();
-    let tenant1_logs: Vec<_> = all_logs.iter().filter(|l| l.tenant_id == tenant1_id).collect();
-    let tenant2_logs: Vec<_> = all_logs.iter().filter(|l| l.tenant_id == tenant2_id).collect();
+    let tenant1_logs: Vec<_> = all_logs
+        .iter()
+        .filter(|l| l.tenant_id == tenant1_id)
+        .collect();
+    let tenant2_logs: Vec<_> = all_logs
+        .iter()
+        .filter(|l| l.tenant_id == tenant2_id)
+        .collect();
 
     chain.add_step(
         "integration-tests::verification",
         "verify_tenant_isolation",
-        format!("Tenant1: {} logs, Tenant2: {} logs", tenant1_logs.len(), tenant2_logs.len()),
+        format!(
+            "Tenant1: {} logs, Tenant2: {} logs",
+            tenant1_logs.len(),
+            tenant2_logs.len()
+        ),
         tenant1_logs.len() == 1 && tenant2_logs.len() == 1,
     );
 
@@ -308,7 +329,10 @@ fn test_multi_tenant_isolation() {
     );
 
     chain.print_report();
-    assert!(chain.all_passed(), "Some multi-tenant verification steps failed");
+    assert!(
+        chain.all_passed(),
+        "Some multi-tenant verification steps failed"
+    );
 }
 
 /// 测试架构约束：Routing 只读
@@ -365,11 +389,11 @@ fn test_performance_baseline() {
     };
 
     let start = std::time::Instant::now();
-    
+
     for _ in 0..1000 {
         let _ = calculate_amount(1000, 500, &pricing);
     }
-    
+
     let elapsed = start.elapsed();
     chain.add_step(
         "performance",
@@ -381,11 +405,11 @@ fn test_performance_baseline() {
     // 2. Token 累积性能
     let usage = UsageAccumulator::default();
     let start = std::time::Instant::now();
-    
+
     for _ in 0..10000 {
         usage.add_output(1);
     }
-    
+
     let elapsed = start.elapsed();
     chain.add_step(
         "performance",

@@ -165,9 +165,7 @@ impl CooldownManager {
 
     /// 获取 Provider 冷却剩余时间
     pub fn provider_cooldown_remaining(&self, provider: &str) -> Option<Duration> {
-        self.provider_cooldowns
-            .get(provider)
-            .map(|e| e.remaining())
+        self.provider_cooldowns.get(provider).map(|e| e.remaining())
     }
 
     /// 清除账号冷却

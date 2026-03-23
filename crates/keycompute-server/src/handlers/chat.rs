@@ -8,15 +8,15 @@ use crate::{
     state::AppState,
 };
 use axum::{
+    Json,
     extract::State,
     response::sse::{Event, Sse},
-    Json,
 };
 use futures::stream::Stream;
 use keycompute_types::{Message, RequestContext, UsageAccumulator};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::convert::Infallible;
+use std::sync::Arc;
 
 /// Chat 请求
 #[derive(Debug, Deserialize)]
@@ -128,7 +128,9 @@ pub async fn chat_completions(
         .pricing
         .create_snapshot(&request.model, &auth.tenant_id)
         .await
-        .map_err(|e| crate::error::ApiError::Internal(format!("Failed to create pricing snapshot: {}", e)))?;
+        .map_err(|e| {
+            crate::error::ApiError::Internal(format!("Failed to create pricing snapshot: {}", e))
+        })?;
 
     // 2. 构建 RequestContext
     let ctx = Arc::new(RequestContext {
@@ -171,13 +173,8 @@ pub async fn chat_completions(
 
     // 5. 返回 SSE 流（带计费触发）
     let billing = Arc::clone(&state.billing);
-    let stream = create_gateway_stream_with_billing(
-        rx,
-        ctx,
-        primary_provider,
-        primary_account_id,
-        billing,
-    );
+    let stream =
+        create_gateway_stream_with_billing(rx, ctx, primary_provider, primary_account_id, billing);
 
     Ok(Sse::new(stream))
 }
@@ -241,9 +238,7 @@ fn create_mock_stream(
             let data = serde_json::to_string(&chunk).unwrap();
             Ok(Event::default().data(data))
         })
-        .chain(stream::once(async {
-            Ok(Event::default().data("[DONE]"))
-        }))
+        .chain(stream::once(async { Ok(Event::default().data("[DONE]")) }))
 }
 
 /// 创建包含路由信息的模拟流
@@ -259,7 +254,10 @@ fn create_mock_stream_with_routing(
     let routing_info = format!(
         "[Routing] Primary: {}, Fallbacks: {:?}",
         plan.primary.provider,
-        plan.fallback_chain.iter().map(|t| &t.provider).collect::<Vec<_>>()
+        plan.fallback_chain
+            .iter()
+            .map(|t| &t.provider)
+            .collect::<Vec<_>>()
     );
 
     let chunks = vec![
@@ -313,9 +311,7 @@ fn create_mock_stream_with_routing(
             let data = serde_json::to_string(&chunk).unwrap();
             Ok(Event::default().data(data))
         })
-        .chain(stream::once(async {
-            Ok(Event::default().data("[DONE]"))
-        }))
+        .chain(stream::once(async { Ok(Event::default().data("[DONE]")) }))
 }
 
 /// 将 Gateway 的 StreamEvent 转换为 Axum SSE Event

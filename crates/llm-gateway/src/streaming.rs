@@ -93,7 +93,10 @@ impl SseEncoder {
     /// 将 StreamEvent 编码为 SSE 格式
     pub fn encode(event: &StreamEvent) -> String {
         match event {
-            StreamEvent::Delta { content, finish_reason } => {
+            StreamEvent::Delta {
+                content,
+                finish_reason,
+            } => {
                 let data = serde_json::json!({
                     "content": content,
                     "finish_reason": finish_reason,
@@ -129,7 +132,7 @@ mod tests {
     #[test]
     fn test_stream_pipeline() {
         let mut pipeline = StreamPipeline::new(Uuid::new_v4());
-        
+
         let event = StreamEvent::Delta {
             content: "Hello".to_string(),
             finish_reason: None,

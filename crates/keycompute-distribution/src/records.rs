@@ -2,10 +2,10 @@
 //!
 //! 写入 distribution_records
 
-use crate::{calculator::DistributionShare, DistributionContext, DistributionLevel};
+use crate::{DistributionContext, DistributionLevel, calculator::DistributionShare};
+use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 /// 分销记录
 ///
@@ -34,10 +34,7 @@ pub struct DistributionRecord {
 
 impl DistributionRecord {
     /// 从分成记录创建分销记录
-    pub fn from_share(
-        ctx: &DistributionContext,
-        share: &DistributionShare,
-    ) -> Self {
+    pub fn from_share(ctx: &DistributionContext, share: &DistributionShare) -> Self {
         Self {
             id: Uuid::new_v4(),
             usage_log_id: ctx.usage_log_id,
@@ -198,12 +195,7 @@ mod tests {
     fn test_distribution_record_from_share() {
         let usage_log_id = Uuid::new_v4();
         let tenant_id = Uuid::new_v4();
-        let ctx = DistributionContext::new(
-            usage_log_id,
-            tenant_id,
-            Decimal::from(100),
-            "CNY",
-        );
+        let ctx = DistributionContext::new(usage_log_id, tenant_id, Decimal::from(100), "CNY");
 
         let beneficiary_id = Uuid::new_v4();
         let share = DistributionShare::new(
@@ -227,12 +219,7 @@ mod tests {
     fn test_distribution_record_status() {
         let usage_log_id = Uuid::new_v4();
         let tenant_id = Uuid::new_v4();
-        let ctx = DistributionContext::new(
-            usage_log_id,
-            tenant_id,
-            Decimal::from(100),
-            "CNY",
-        );
+        let ctx = DistributionContext::new(usage_log_id, tenant_id, Decimal::from(100), "CNY");
 
         let share = DistributionShare::new(
             Uuid::new_v4(),
@@ -255,12 +242,7 @@ mod tests {
     fn test_distribution_service_process() {
         let usage_log_id = Uuid::new_v4();
         let tenant_id = Uuid::new_v4();
-        let ctx = DistributionContext::new(
-            usage_log_id,
-            tenant_id,
-            Decimal::from(100),
-            "CNY",
-        );
+        let ctx = DistributionContext::new(usage_log_id, tenant_id, Decimal::from(100), "CNY");
 
         let shares = calculate_shares(
             Decimal::from(100),
@@ -310,12 +292,7 @@ mod tests {
     fn test_distribution_service_validate() {
         let usage_log_id = Uuid::new_v4();
         let tenant_id = Uuid::new_v4();
-        let ctx = DistributionContext::new(
-            usage_log_id,
-            tenant_id,
-            Decimal::from(100),
-            "CNY",
-        );
+        let ctx = DistributionContext::new(usage_log_id, tenant_id, Decimal::from(100), "CNY");
 
         let records = vec![
             DistributionRecordBuilder::new()
@@ -330,11 +307,19 @@ mod tests {
         ];
 
         let service = DistributionService::new();
-        
+
         // 20 <= 30% of 100 = 30, should be valid
-        assert!(service.validate_distribution(&ctx, &records, Decimal::from_f64_retain(0.30).unwrap()));
-        
+        assert!(service.validate_distribution(
+            &ctx,
+            &records,
+            Decimal::from_f64_retain(0.30).unwrap()
+        ));
+
         // 20 > 15% of 100 = 15, should be invalid
-        assert!(!service.validate_distribution(&ctx, &records, Decimal::from_f64_retain(0.15).unwrap()));
+        assert!(!service.validate_distribution(
+            &ctx,
+            &records,
+            Decimal::from_f64_retain(0.15).unwrap()
+        ));
     }
 }

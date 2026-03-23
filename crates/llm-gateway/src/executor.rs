@@ -3,13 +3,13 @@
 //! 核心执行入口，控制 retry/fallback/streaming 生命周期。
 
 use crate::{GatewayConfig, streaming::StreamPipeline};
+use futures::StreamExt;
+use keycompute_provider_trait::{ProviderAdapter, StreamEvent, UpstreamRequest};
 use keycompute_runtime::AccountStateStore;
 use keycompute_types::{ExecutionPlan, ExecutionTarget, KeyComputeError, RequestContext, Result};
-use keycompute_provider_trait::{ProviderAdapter, StreamEvent, UpstreamRequest};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use futures::StreamExt;
 
 /// Gateway 执行器
 ///
@@ -26,11 +26,11 @@ pub struct GatewayExecutor {
 
 impl GatewayExecutor {
     /// 创建新的执行器
-    pub fn new(config: GatewayConfig, providers: HashMap<String, Arc<dyn ProviderAdapter>>) -> Self {
-        Self {
-            config,
-            providers,
-        }
+    pub fn new(
+        config: GatewayConfig,
+        providers: HashMap<String, Arc<dyn ProviderAdapter>>,
+    ) -> Self {
+        Self { config, providers }
     }
 
     /// 执行请求（唯一执行入口）
@@ -91,8 +91,9 @@ impl GatewayExecutor {
         tx: mpsc::Sender<StreamEvent>,
     ) -> Result<()> {
         // 获取 Provider
-        let provider = self.providers.get(&target.provider)
-            .ok_or_else(|| KeyComputeError::Internal(format!("Provider {} not found", target.provider)))?;
+        let provider = self.providers.get(&target.provider).ok_or_else(|| {
+            KeyComputeError::Internal(format!("Provider {} not found", target.provider))
+        })?;
 
         // 构建上游请求
         let request = self.build_upstream_request(ctx, target);
@@ -105,18 +106,28 @@ impl GatewayExecutor {
 
         while let Some(event) = stream.next().await {
             match event? {
-                StreamEvent::Delta { content, finish_reason } => {
+                StreamEvent::Delta {
+                    content,
+                    finish_reason,
+                } => {
                     // 累积 tokens（简化估算）
                     let tokens = Self::estimate_tokens(&content);
                     ctx.usage.add_output(tokens);
 
                     // 转发给客户端
-                    let event = StreamEvent::Delta { content, finish_reason };
+                    let event = StreamEvent::Delta {
+                        content,
+                        finish_reason,
+                    };
                     pipeline.process_event(&event);
-                    tx.send(event).await
+                    tx.send(event)
+                        .await
                         .map_err(|_| KeyComputeError::Internal("Send error".into()))?;
                 }
-                StreamEvent::Usage { input_tokens, output_tokens } => {
+                StreamEvent::Usage {
+                    input_tokens,
+                    output_tokens,
+                } => {
                     // Provider 报告的用量（优先级更高）
                     ctx.usage.set_input(input_tokens);
                     // 覆盖输出的 token 计数
@@ -126,7 +137,8 @@ impl GatewayExecutor {
                     }
                 }
                 StreamEvent::Done => {
-                    tx.send(StreamEvent::Done).await
+                    tx.send(StreamEvent::Done)
+                        .await
                         .map_err(|_| KeyComputeError::Internal("Send error".into()))?;
                     break;
                 }
@@ -141,8 +153,13 @@ impl GatewayExecutor {
     }
 
     /// 构建上游请求
-    fn build_upstream_request(&self, ctx: &RequestContext, target: &ExecutionTarget) -> UpstreamRequest {
-        let messages: Vec<keycompute_provider_trait::UpstreamMessage> = ctx.messages
+    fn build_upstream_request(
+        &self,
+        ctx: &RequestContext,
+        target: &ExecutionTarget,
+    ) -> UpstreamRequest {
+        let messages: Vec<keycompute_provider_trait::UpstreamMessage> = ctx
+            .messages
             .iter()
             .map(|m| keycompute_provider_trait::UpstreamMessage {
                 role: m.role.clone(),
@@ -209,6 +226,9 @@ mod tests {
     #[test]
     fn test_estimate_tokens() {
         assert_eq!(GatewayExecutor::estimate_tokens("Hello"), 1);
-        assert_eq!(GatewayExecutor::estimate_tokens("a".repeat(100).as_str()), 25);
+        assert_eq!(
+            GatewayExecutor::estimate_tokens("a".repeat(100).as_str()),
+            25
+        );
     }
 }

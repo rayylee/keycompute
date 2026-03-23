@@ -8,8 +8,8 @@ use crate::{
     state::AppState,
 };
 use axum::{
-    extract::{Query, State},
     Json,
+    extract::{Query, State},
 };
 use keycompute_types::{RequestContext, UsageAccumulator};
 use serde::{Deserialize, Serialize};

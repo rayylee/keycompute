@@ -146,14 +146,26 @@ mod tests {
     #[test]
     fn test_permission_checker_admin() {
         let perms = vec![Permission::UseApi];
-        assert!(PermissionChecker::check("admin", &perms, &Permission::ManageUsers));
+        assert!(PermissionChecker::check(
+            "admin",
+            &perms,
+            &Permission::ManageUsers
+        ));
     }
 
     #[test]
     fn test_permission_checker_user() {
         let perms = vec![Permission::UseApi, Permission::ViewUsage];
-        assert!(PermissionChecker::check("user", &perms, &Permission::UseApi));
-        assert!(!PermissionChecker::check("user", &perms, &Permission::ManageUsers));
+        assert!(PermissionChecker::check(
+            "user",
+            &perms,
+            &Permission::UseApi
+        ));
+        assert!(!PermissionChecker::check(
+            "user",
+            &perms,
+            &Permission::ManageUsers
+        ));
     }
 
     #[test]

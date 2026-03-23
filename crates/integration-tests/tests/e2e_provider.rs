@@ -3,8 +3,8 @@
 //! 验证各 Provider 适配器的协议转换和流处理
 
 use integration_tests::common::VerificationChain;
-use keycompute_provider_trait::{ProviderAdapter, UpstreamRequest, StreamEvent};
 use keycompute_openai::OpenAIProvider;
+use keycompute_provider_trait::{ProviderAdapter, StreamEvent, UpstreamRequest};
 
 /// 测试 Provider trait 基础功能
 #[test]
@@ -134,7 +134,7 @@ fn test_provider_openai() {
     // 4. 检查模型支持判断
     let supports_gpt4 = provider.supports_model("gpt-4o");
     let supports_unknown = provider.supports_model("unknown-model");
-    
+
     chain.add_step(
         "keycompute-openai",
         "OpenAIProvider::supports_model_gpt4",

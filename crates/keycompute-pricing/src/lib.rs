@@ -3,8 +3,8 @@
 //! 定价模块，只读，生成 PricingSnapshot。
 //! 架构约束：不写任何状态，不参与路由或执行。
 
-use keycompute_types::{KeyComputeError, PricingSnapshot, Result};
 use keycompute_db::PricingModel;
+use keycompute_types::{KeyComputeError, PricingSnapshot, Result};
 use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -100,7 +100,9 @@ impl PricingService {
         // 尝试按租户+模型名查找，支持任意 provider
         let pricing = PricingModel::find_by_model(pool, *tenant_id, model_name, "openai")
             .await
-            .map_err(|e| KeyComputeError::DatabaseError(format!("Failed to load pricing: {}", e)))?;
+            .map_err(|e| {
+                KeyComputeError::DatabaseError(format!("Failed to load pricing: {}", e))
+            })?;
 
         if let Some(p) = pricing {
             return Ok(PricingSnapshot {
@@ -112,9 +114,9 @@ impl PricingService {
         }
 
         // 尝试查找默认定价
-        let defaults = PricingModel::find_defaults(pool)
-            .await
-            .map_err(|e| KeyComputeError::DatabaseError(format!("Failed to load default pricing: {}", e)))?;
+        let defaults = PricingModel::find_defaults(pool).await.map_err(|e| {
+            KeyComputeError::DatabaseError(format!("Failed to load default pricing: {}", e))
+        })?;
 
         for p in defaults {
             if p.model_name == model_name {
@@ -140,11 +142,26 @@ impl PricingService {
     fn get_default_pricing(&self, model_name: &str) -> PricingSnapshot {
         // 根据模型名称返回默认价格
         let (input_price, output_price) = match model_name {
-            "gpt-4o" => (Decimal::from(500) / Decimal::from(1000), Decimal::from(1500) / Decimal::from(1000)),
-            "gpt-4o-mini" => (Decimal::from(150) / Decimal::from(1000), Decimal::from(600) / Decimal::from(1000)),
-            "gpt-4-turbo" => (Decimal::from(1000) / Decimal::from(1000), Decimal::from(3000) / Decimal::from(1000)),
-            "gpt-3.5-turbo" => (Decimal::from(50) / Decimal::from(1000), Decimal::from(150) / Decimal::from(1000)),
-            _ => (Decimal::from(100) / Decimal::from(1000), Decimal::from(300) / Decimal::from(1000)),
+            "gpt-4o" => (
+                Decimal::from(500) / Decimal::from(1000),
+                Decimal::from(1500) / Decimal::from(1000),
+            ),
+            "gpt-4o-mini" => (
+                Decimal::from(150) / Decimal::from(1000),
+                Decimal::from(600) / Decimal::from(1000),
+            ),
+            "gpt-4-turbo" => (
+                Decimal::from(1000) / Decimal::from(1000),
+                Decimal::from(3000) / Decimal::from(1000),
+            ),
+            "gpt-3.5-turbo" => (
+                Decimal::from(50) / Decimal::from(1000),
+                Decimal::from(150) / Decimal::from(1000),
+            ),
+            _ => (
+                Decimal::from(100) / Decimal::from(1000),
+                Decimal::from(300) / Decimal::from(1000),
+            ),
         };
 
         PricingSnapshot {
@@ -168,9 +185,9 @@ impl PricingService {
             return Ok(());
         };
 
-        let defaults = PricingModel::find_defaults(pool)
-            .await
-            .map_err(|e| KeyComputeError::DatabaseError(format!("Failed to load default pricing: {}", e)))?;
+        let defaults = PricingModel::find_defaults(pool).await.map_err(|e| {
+            KeyComputeError::DatabaseError(format!("Failed to load default pricing: {}", e))
+        })?;
 
         let mut cache = self.cache.write().await;
         for p in defaults {
@@ -194,8 +211,10 @@ impl PricingService {
         output_tokens: u32,
         pricing: &PricingSnapshot,
     ) -> Decimal {
-        let input_cost = Decimal::from(input_tokens) * pricing.input_price_per_1k / Decimal::from(1000);
-        let output_cost = Decimal::from(output_tokens) * pricing.output_price_per_1k / Decimal::from(1000);
+        let input_cost =
+            Decimal::from(input_tokens) * pricing.input_price_per_1k / Decimal::from(1000);
+        let output_cost =
+            Decimal::from(output_tokens) * pricing.output_price_per_1k / Decimal::from(1000);
         input_cost + output_cost
     }
 }
@@ -207,7 +226,10 @@ mod tests {
     #[tokio::test]
     async fn test_pricing_service_new() {
         let service = PricingService::new();
-        let snapshot = service.create_snapshot("gpt-4o", &Uuid::new_v4()).await.unwrap();
+        let snapshot = service
+            .create_snapshot("gpt-4o", &Uuid::new_v4())
+            .await
+            .unwrap();
 
         assert_eq!(snapshot.model_name, "gpt-4o");
         assert_eq!(snapshot.currency, "CNY");

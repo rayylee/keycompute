@@ -4,8 +4,8 @@
 
 use crate::{error::Result, extractors::AuthExtractor, state::AppState};
 use axum::{
-    extract::{Query, State},
     Json,
+    extract::{Query, State},
 };
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
@@ -71,25 +71,20 @@ pub async fn list_billing_records(
 ) -> Result<Json<BillingListResponse>> {
     // TODO: 从数据库查询实际的计费记录
     // 目前返回模拟数据
-    let records = vec![
-        BillingRecord {
-            id: Uuid::new_v4(),
-            request_id: Uuid::new_v4(),
-            model_name: "gpt-4o".to_string(),
-            provider_name: "openai".to_string(),
-            input_tokens: 1000,
-            output_tokens: 500,
-            user_amount: Decimal::from(2),
-            currency: "CNY".to_string(),
-            status: "success".to_string(),
-            created_at: Utc::now(),
-        },
-    ];
+    let records = vec![BillingRecord {
+        id: Uuid::new_v4(),
+        request_id: Uuid::new_v4(),
+        model_name: "gpt-4o".to_string(),
+        provider_name: "openai".to_string(),
+        input_tokens: 1000,
+        output_tokens: 500,
+        user_amount: Decimal::from(2),
+        currency: "CNY".to_string(),
+        status: "success".to_string(),
+        created_at: Utc::now(),
+    }];
 
-    Ok(Json(BillingListResponse {
-        records,
-        total: 1,
-    }))
+    Ok(Json(BillingListResponse { records, total: 1 }))
 }
 
 /// 计费统计查询请求
@@ -263,10 +258,10 @@ pub async fn calculate_cost(
         .map_err(|e| crate::error::ApiError::Internal(format!("Failed to get pricing: {}", e)))?;
 
     // 计算费用
-    let input_cost = Decimal::from(request.input_tokens) / Decimal::from(1000)
-        * pricing.input_price_per_1k;
-    let output_cost = Decimal::from(request.output_tokens) / Decimal::from(1000)
-        * pricing.output_price_per_1k;
+    let input_cost =
+        Decimal::from(request.input_tokens) / Decimal::from(1000) * pricing.input_price_per_1k;
+    let output_cost =
+        Decimal::from(request.output_tokens) / Decimal::from(1000) * pricing.output_price_per_1k;
     let total_cost = input_cost + output_cost;
 
     Ok(Json(CalculateCostResponse {

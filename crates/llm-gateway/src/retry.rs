@@ -44,8 +44,7 @@ impl RetryPolicy {
         }
 
         let backoff = (self.initial_backoff_ms as f64
-            * self.backoff_multiplier.powi((attempt - 1) as i32))
-            as u64;
+            * self.backoff_multiplier.powi((attempt - 1) as i32)) as u64;
 
         Duration::from_millis(backoff.min(self.max_backoff_ms))
     }
@@ -106,7 +105,7 @@ mod tests {
     #[test]
     fn test_backoff_duration() {
         let policy = RetryPolicy::default();
-        
+
         assert_eq!(policy.backoff_duration(0), Duration::from_millis(0));
         assert_eq!(policy.backoff_duration(1), Duration::from_millis(100));
         assert_eq!(policy.backoff_duration(2), Duration::from_millis(200));
@@ -119,7 +118,7 @@ mod tests {
         let mut state = RetryState::new(policy);
 
         assert_eq!(state.attempt, 0);
-        
+
         let backoff = state.next_backoff();
         assert_eq!(backoff, Duration::from_millis(100));
         assert_eq!(state.attempt, 1);

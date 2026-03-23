@@ -111,9 +111,9 @@ async fn test_routing_provider_health() {
     provider_health.record_success("openai", 100);
     provider_health.record_success("openai", 150);
     provider_health.record_failure("claude");
-    
+
     let engine = RoutingEngine::new(account_states, provider_health.clone(), cooldown);
-    
+
     chain.add_step(
         "keycompute-routing",
         "ProviderHealthStore::record_success",
@@ -162,11 +162,7 @@ async fn test_routing_provider_cooldown() {
     let provider_health = Arc::new(ProviderHealthStore::new());
     let cooldown = Arc::new(CooldownManager::new());
 
-    let engine = RoutingEngine::new(
-        account_states,
-        provider_health,
-        cooldown.clone(),
-    );
+    let engine = RoutingEngine::new(account_states, provider_health, cooldown.clone());
 
     // 2. 初始状态检查
     let initial_cooling = engine.is_provider_cooling("openai");
@@ -183,7 +179,7 @@ async fn test_routing_provider_cooldown() {
         Some(std::time::Duration::from_secs(60)),
         CooldownReason::ConsecutiveErrors,
     );
-    
+
     chain.add_step(
         "keycompute-runtime",
         "CooldownManager::set_provider_cooldown",
@@ -232,15 +228,11 @@ async fn test_routing_account_cooldown() {
     let provider_health = Arc::new(ProviderHealthStore::new());
     let cooldown = Arc::new(CooldownManager::new());
 
-    let engine = RoutingEngine::new(
-        account_states,
-        provider_health,
-        cooldown.clone(),
-    );
+    let engine = RoutingEngine::new(account_states, provider_health, cooldown.clone());
 
     // 2. 测试账号冷却
     let account_id = Uuid::new_v4();
-    
+
     let initial_cooling = engine.is_account_cooling(&account_id);
     chain.add_step(
         "keycompute-routing",
@@ -404,7 +396,7 @@ fn test_routing_provider_management() {
 
     // 1. 创建引擎
     let mut engine = create_test_engine();
-    
+
     let initial_count = engine.configured_providers().len();
     chain.add_step(
         "keycompute-routing",
@@ -419,7 +411,9 @@ fn test_routing_provider_management() {
         "keycompute-routing",
         "RoutingEngine::add_provider",
         format!("After adding gemini: {:?}", engine.configured_providers()),
-        engine.configured_providers().contains(&"gemini".to_string()),
+        engine
+            .configured_providers()
+            .contains(&"gemini".to_string()),
     );
 
     // 3. 移除 Provider
@@ -427,13 +421,22 @@ fn test_routing_provider_management() {
     chain.add_step(
         "keycompute-routing",
         "RoutingEngine::remove_provider",
-        format!("After removing deepseek: {:?}", engine.configured_providers()),
-        !engine.configured_providers().contains(&"deepseek".to_string()),
+        format!(
+            "After removing deepseek: {:?}",
+            engine.configured_providers()
+        ),
+        !engine
+            .configured_providers()
+            .contains(&"deepseek".to_string()),
     );
 
     // 4. 重复添加不会重复
     engine.add_provider("openai");
-    let openai_count = engine.configured_providers().iter().filter(|p| *p == "openai").count();
+    let openai_count = engine
+        .configured_providers()
+        .iter()
+        .filter(|p| *p == "openai")
+        .count();
     chain.add_step(
         "keycompute-routing",
         "RoutingEngine::no_duplicate",

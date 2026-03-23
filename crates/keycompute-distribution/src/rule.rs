@@ -71,10 +71,7 @@ impl RuleEngine {
     }
 
     /// 创建带默认比例的规则引擎
-    pub fn with_defaults(
-        level1_ratio: Decimal,
-        level2_ratio: Decimal,
-    ) -> Self {
+    pub fn with_defaults(level1_ratio: Decimal, level2_ratio: Decimal) -> Self {
         Self {
             default_level1_ratio: level1_ratio,
             default_level2_ratio: level2_ratio,
@@ -89,15 +86,8 @@ impl RuleEngine {
     /// 计算有效规则
     ///
     /// 从规则列表中筛选出启用的规则，并计算实际分成比例
-    pub fn compute_effective_rules(
-        &self,
-        rules: &[DistributionRule],
-    ) -> Vec<DistributionRule> {
-        rules
-            .iter()
-            .filter(|r| r.enabled)
-            .cloned()
-            .collect()
+    pub fn compute_effective_rules(&self, rules: &[DistributionRule]) -> Vec<DistributionRule> {
+        rules.iter().filter(|r| r.enabled).cloned().collect()
     }
 
     /// 验证规则总和
@@ -189,12 +179,8 @@ mod tests {
         let beneficiary_id = Uuid::new_v4();
         let ratio = Decimal::from_f64_retain(0.1).unwrap();
 
-        let rule = DistributionRule::new(
-            tenant_id,
-            beneficiary_id,
-            ratio,
-            DistributionLevel::Level1,
-        );
+        let rule =
+            DistributionRule::new(tenant_id, beneficiary_id, ratio, DistributionLevel::Level1);
 
         assert_eq!(rule.tenant_id, tenant_id);
         assert_eq!(rule.beneficiary_id, beneficiary_id);
@@ -208,12 +194,8 @@ mod tests {
         let beneficiary_id = Uuid::new_v4();
         let ratio = Decimal::from_f64_retain(0.1).unwrap();
 
-        let mut rule = DistributionRule::new(
-            tenant_id,
-            beneficiary_id,
-            ratio,
-            DistributionLevel::Level1,
-        );
+        let mut rule =
+            DistributionRule::new(tenant_id, beneficiary_id, ratio, DistributionLevel::Level1);
 
         rule.disable();
         assert!(!rule.enabled);
@@ -226,7 +208,7 @@ mod tests {
     fn test_rule_engine_defaults() {
         let engine = RuleEngine::new();
         let (l1, l2) = engine.default_ratios();
-        
+
         assert_eq!(l1, Decimal::from_f64_retain(0.3).unwrap());
         assert_eq!(l2, Decimal::from_f64_retain(0.2).unwrap());
     }

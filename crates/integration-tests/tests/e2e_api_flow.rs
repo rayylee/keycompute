@@ -2,12 +2,12 @@
 //!
 //! 验证数据链路：API Server -> Auth -> Rate Limit -> RequestContext
 
-use integration_tests::common::{TestContext, VerificationChain, TEST_API_KEY};
-use integration_tests::mocks::provider::MockProviderFactory;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use keycompute_server::state::AppState;
+use integration_tests::common::{TEST_API_KEY, TestContext, VerificationChain};
+use integration_tests::mocks::provider::MockProviderFactory;
 use keycompute_server::create_router;
+use keycompute_server::state::AppState;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -21,7 +21,11 @@ async fn test_api_request_flow() {
 
     // 1. 创建应用状态和路由（使用 Mock Provider）
     let mut providers = HashMap::new();
-    providers.insert("openai".to_string(), Arc::new(MockProviderFactory::create_openai()) as Arc<dyn keycompute_provider_trait::ProviderAdapter>);
+    providers.insert(
+        "openai".to_string(),
+        Arc::new(MockProviderFactory::create_openai())
+            as Arc<dyn keycompute_provider_trait::ProviderAdapter>,
+    );
     let state = AppState::with_providers(providers);
     let app = create_router(state);
 
@@ -97,10 +101,10 @@ async fn test_api_request_flow() {
 /// 测试认证流程
 #[tokio::test]
 async fn test_auth_flow() {
-    use keycompute_auth::{ApiKeyValidator, AuthService};
-    use keycompute_server::extractors::AuthExtractor;
     use axum::http::HeaderMap;
     use axum::http::header::AUTHORIZATION;
+    use keycompute_auth::{ApiKeyValidator, AuthService};
+    use keycompute_server::extractors::AuthExtractor;
 
     let mut chain = VerificationChain::new();
 
@@ -140,10 +144,7 @@ async fn test_auth_flow() {
 
     // 2. 测试无效 API Key
     let mut bad_headers = HeaderMap::new();
-    bad_headers.insert(
-        AUTHORIZATION,
-        "Bearer invalid-key".parse().unwrap(),
-    );
+    bad_headers.insert(AUTHORIZATION, "Bearer invalid-key".parse().unwrap());
 
     let bad_result = AuthExtractor::from_header_with_auth(&bad_headers, &auth_service).await;
     chain.add_step(
@@ -194,8 +195,8 @@ async fn test_health_endpoint() {
 /// 测试请求 ID 提取
 #[tokio::test]
 async fn test_request_id_extraction() {
-    use keycompute_server::extractors::RequestId;
     use axum::http::HeaderMap;
+    use keycompute_server::extractors::RequestId;
 
     let mut chain = VerificationChain::new();
 

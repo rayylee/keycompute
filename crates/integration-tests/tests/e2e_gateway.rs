@@ -4,9 +4,9 @@
 
 use integration_tests::common::VerificationChain;
 use integration_tests::mocks::provider::MockProviderFactory;
-use llm_gateway::{FailoverManager, RetryPolicy, GatewayConfig, GatewayBuilder};
-use llm_gateway::retry::RetryState;
 use keycompute_provider_trait::ProviderAdapter;
+use llm_gateway::retry::RetryState;
+use llm_gateway::{FailoverManager, GatewayBuilder, GatewayConfig, RetryPolicy};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -186,11 +186,9 @@ async fn test_gateway_provider_stream() {
     );
 
     // 2. 构建请求
-    let request = keycompute_provider_trait::UpstreamRequest::new(
-        "http://mock-openai",
-        "mock-key",
-        "gpt-4o",
-    ).with_message("user", "Hello");
+    let request =
+        keycompute_provider_trait::UpstreamRequest::new("http://mock-openai", "mock-key", "gpt-4o")
+            .with_message("user", "Hello");
 
     // 3. 执行流请求
     let stream = provider.stream_chat(request).await;
@@ -261,11 +259,8 @@ async fn test_gateway_fallback_chain() {
     );
 
     // 2. 尝试失败 Provider
-    let request = keycompute_provider_trait::UpstreamRequest::new(
-        "http://mock",
-        "mock-key",
-        "gpt-4o",
-    );
+    let request =
+        keycompute_provider_trait::UpstreamRequest::new("http://mock", "mock-key", "gpt-4o");
 
     let primary_result = failing_provider.stream_chat(request.clone()).await;
     chain.add_step(

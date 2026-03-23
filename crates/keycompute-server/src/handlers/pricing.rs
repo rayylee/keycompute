@@ -8,8 +8,8 @@ use crate::{
     state::AppState,
 };
 use axum::{
-    extract::{Query, State},
     Json,
+    extract::{Query, State},
 };
 use serde::{Deserialize, Serialize};
 
@@ -91,11 +91,10 @@ pub async fn calculate_cost(
         .await
         .map_err(|e| ApiError::Internal(format!("Failed to get pricing: {}", e)))?;
 
-    let total_cost = state.pricing.calculate_cost(
-        request.input_tokens,
-        request.output_tokens,
-        &snapshot,
-    );
+    let total_cost =
+        state
+            .pricing
+            .calculate_cost(request.input_tokens, request.output_tokens, &snapshot);
 
     let input_cost = snapshot.input_price_per_1k
         * rust_decimal::Decimal::from(request.input_tokens)

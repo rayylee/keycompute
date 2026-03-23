@@ -49,9 +49,9 @@ where
     F: FnOnce() -> Fut,
     Fut: std::future::Future<Output = anyhow::Result<T>>,
 {
-    timeout(TEST_TIMEOUT, f()).await.map_err(|_| {
-        anyhow::anyhow!("Test timed out after {:?}", TEST_TIMEOUT)
-    })?
+    timeout(TEST_TIMEOUT, f())
+        .await
+        .map_err(|_| anyhow::anyhow!("Test timed out after {:?}", TEST_TIMEOUT))?
 }
 
 /// 验证链结构 - 用于追踪数据流经过的 crate
@@ -121,9 +121,7 @@ impl VerificationChain {
 }
 
 /// 模拟 SSE 流解析器
-pub async fn parse_sse_stream<S>(
-    mut stream: S,
-) -> anyhow::Result<Vec<serde_json::Value>>
+pub async fn parse_sse_stream<S>(mut stream: S) -> anyhow::Result<Vec<serde_json::Value>>
 where
     S: tokio_stream::Stream<Item = Result<String, reqwest::Error>> + Unpin,
 {

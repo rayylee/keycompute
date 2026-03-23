@@ -8,7 +8,7 @@ use crate::{
 };
 use axum::{
     extract::FromRequestParts,
-    http::{request::Parts, HeaderMap},
+    http::{HeaderMap, request::Parts},
 };
 use keycompute_auth::AuthContext;
 use serde::{Deserialize, Serialize};
@@ -131,7 +131,7 @@ where
                 .and_then(|h| h.to_str().ok())
                 .and_then(|s| Uuid::parse_str(s).ok())
                 .unwrap_or_else(Uuid::new_v4);
-            
+
             Ok(Self(id))
         }
     }
@@ -169,7 +169,10 @@ mod tests {
     #[tokio::test]
     async fn test_auth_extractor_from_header_invalid_format() {
         let mut headers = HeaderMap::new();
-        headers.insert("Authorization", HeaderValue::from_static("Basic dXNlcjpwYXNz"));
+        headers.insert(
+            "Authorization",
+            HeaderValue::from_static("Basic dXNlcjpwYXNz"),
+        );
 
         let auth_service =
             keycompute_auth::AuthService::new(keycompute_auth::ApiKeyValidator::default());

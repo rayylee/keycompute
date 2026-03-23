@@ -10,9 +10,7 @@ pub mod models;
 pub mod pricing;
 pub mod routing;
 
-pub use billing::{
-    calculate_cost, get_billing_stats, list_billing_records, trigger_billing,
-};
+pub use billing::{calculate_cost, get_billing_stats, list_billing_records, trigger_billing};
 pub use chat::chat_completions;
 pub use gateway::{check_provider_health, get_execution_stats, get_gateway_status};
 pub use health::health_check;

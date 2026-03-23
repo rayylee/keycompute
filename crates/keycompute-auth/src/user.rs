@@ -2,7 +2,10 @@
 //!
 //! 用户和租户信息的加载与管理。
 
-use keycompute_types::Result;
+use keycompute_db::{Tenant, User};
+use keycompute_types::{KeyComputeError, Result};
+use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 
 /// 用户信息
@@ -37,6 +40,18 @@ impl UserInfo {
             email: email.into(),
             name: name.into(),
             role: role.into(),
+            active: true,
+        }
+    }
+
+    /// 从数据库 User 模型转换
+    pub fn from_db_user(user: &User) -> Self {
+        Self {
+            id: user.id,
+            tenant_id: user.tenant_id,
+            email: user.email.clone(),
+            name: user.name.clone().unwrap_or_default(),
+            role: user.role.clone(),
             active: true,
         }
     }
@@ -90,31 +105,77 @@ impl TenantInfo {
         }
     }
 
+    /// 从数据库 Tenant 模型转换
+    pub fn from_db_tenant(tenant: &Tenant) -> Self {
+        Self {
+            id: tenant.id,
+            name: tenant.name.clone(),
+            slug: tenant.slug.clone(),
+            active: tenant.status == "active",
+            config: TenantConfig {
+                default_rpm_limit: tenant.default_rpm_limit as u32,
+                default_tpm_limit: tenant.default_tpm_limit as u32,
+                distribution_enabled: tenant.distribution_enabled,
+            },
+        }
+    }
+
     /// 设置配置
     pub fn with_config(mut self, config: TenantConfig) -> Self {
         self.config = config;
         self
     }
+
+    /// 检查租户是否激活
+    pub fn is_active(&self) -> bool {
+        self.active
+    }
 }
 
 /// 用户服务
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct UserService {
-    // TODO: 添加数据库连接
+    /// 数据库连接池（可选）
+    pool: Option<Arc<PgPool>>,
+}
+
+impl std::fmt::Debug for UserService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UserService")
+            .field("pool", &self.pool.as_ref().map(|_| "PgPool"))
+            .finish()
+    }
 }
 
 impl UserService {
-    /// 创建新的用户服务
+    /// 创建新的用户服务（无数据库连接）
     pub fn new() -> Self {
-        Self {}
+        Self { pool: None }
+    }
+
+    /// 创建带数据库连接的用户服务
+    pub fn with_pool(pool: Arc<PgPool>) -> Self {
+        Self { pool: Some(pool) }
     }
 
     /// 根据 ID 加载用户
     pub async fn load_user(&self, user_id: Uuid) -> Result<UserInfo> {
-        // TODO: 从数据库加载用户
         tracing::debug!(user_id = %user_id, "Loading user");
 
-        // 模拟返回
+        if let Some(pool) = &self.pool {
+            let user = User::find_by_id(pool, user_id)
+                .await
+                .map_err(|e| KeyComputeError::DatabaseError(format!("Failed to load user: {}", e)))?
+                .ok_or_else(|| {
+                    KeyComputeError::AuthError(format!("User not found: {}", user_id))
+                })?;
+
+            tracing::info!(user_id = %user.id, tenant_id = %user.tenant_id, role = %user.role, "User loaded");
+            return Ok(UserInfo::from_db_user(&user));
+        }
+
+        // 无数据库连接，返回模拟数据
+        tracing::warn!("No database connection, returning mock user");
         Ok(UserInfo::new(
             user_id,
             Uuid::new_v4(),
@@ -126,18 +187,63 @@ impl UserService {
 
     /// 根据 ID 加载租户
     pub async fn load_tenant(&self, tenant_id: Uuid) -> Result<TenantInfo> {
-        // TODO: 从数据库加载租户
         tracing::debug!(tenant_id = %tenant_id, "Loading tenant");
 
-        // 模拟返回
+        if let Some(pool) = &self.pool {
+            let tenant = Tenant::find_by_id(pool, tenant_id)
+                .await
+                .map_err(|e| {
+                    KeyComputeError::DatabaseError(format!("Failed to load tenant: {}", e))
+                })?
+                .ok_or_else(|| {
+                    KeyComputeError::AuthError(format!("Tenant not found: {}", tenant_id))
+                })?;
+
+            // 检查租户状态
+            if tenant.status != "active" {
+                return Err(KeyComputeError::AuthError(format!(
+                    "Tenant is not active: {}",
+                    tenant.status
+                )));
+            }
+
+            tracing::info!(tenant_id = %tenant.id, name = %tenant.name, status = %tenant.status, "Tenant loaded");
+            return Ok(TenantInfo::from_db_tenant(&tenant));
+        }
+
+        // 无数据库连接，返回模拟数据
+        tracing::warn!("No database connection, returning mock tenant");
         Ok(TenantInfo::new(tenant_id, "Test Tenant", "test-tenant"))
     }
 
     /// 根据 API Key ID 加载用户信息
     pub async fn load_by_api_key(&self, api_key_id: Uuid) -> Result<UserInfo> {
-        // TODO: 从数据库查询
         tracing::debug!(api_key_id = %api_key_id, "Loading user by API key");
 
+        if let Some(pool) = &self.pool {
+            // 通过 API Key 查找用户
+            use keycompute_db::ApiKey;
+            let api_key = ApiKey::find_by_id(pool, api_key_id)
+                .await
+                .map_err(|e| {
+                    KeyComputeError::DatabaseError(format!("Failed to load API key: {}", e))
+                })?
+                .ok_or_else(|| {
+                    KeyComputeError::AuthError(format!("API key not found: {}", api_key_id))
+                })?;
+
+            // 检查 API Key 是否有效
+            if !api_key.is_valid() {
+                return Err(KeyComputeError::AuthError(
+                    "API key is revoked or expired".into(),
+                ));
+            }
+
+            // 加载用户
+            return self.load_user(api_key.user_id).await;
+        }
+
+        // 无数据库连接，返回模拟数据
         Ok(UserInfo::new(
             Uuid::new_v4(),
             Uuid::new_v4(),
@@ -145,6 +251,36 @@ impl UserService {
             "API User",
             "user",
         ))
+    }
+
+    /// 加载用户并验证租户归属
+    pub async fn load_user_with_tenant_validation(
+        &self,
+        user_id: Uuid,
+        expected_tenant_id: Uuid,
+    ) -> Result<UserInfo> {
+        let user = self.load_user(user_id).await?;
+
+        if user.tenant_id != expected_tenant_id {
+            tracing::warn!(
+                user_id = %user_id,
+                expected_tenant_id = %expected_tenant_id,
+                actual_tenant_id = %user.tenant_id,
+                "User does not belong to expected tenant"
+            );
+            return Err(KeyComputeError::AuthError(
+                "User does not belong to the expected tenant".into(),
+            ));
+        }
+
+        Ok(user)
+    }
+
+    /// 加载用户和租户信息
+    pub async fn load_user_and_tenant(&self, user_id: Uuid) -> Result<(UserInfo, TenantInfo)> {
+        let user = self.load_user(user_id).await?;
+        let tenant = self.load_tenant(user.tenant_id).await?;
+        Ok((user, tenant))
     }
 }
 
@@ -192,15 +328,49 @@ mod tests {
         assert_eq!(tenant.name, "Test");
         assert_eq!(tenant.slug, "test");
         assert!(tenant.active);
+        assert!(tenant.is_active());
+    }
+
+    #[test]
+    fn test_tenant_config() {
+        let config = TenantConfig {
+            default_rpm_limit: 100,
+            default_tpm_limit: 10000,
+            distribution_enabled: true,
+        };
+        let tenant = TenantInfo::new(Uuid::new_v4(), "Test", "test").with_config(config);
+        assert_eq!(tenant.config.default_rpm_limit, 100);
+        assert!(tenant.config.distribution_enabled);
     }
 
     #[tokio::test]
-    async fn test_user_service() {
+    async fn test_user_service_no_db() {
         let service = UserService::new();
         let user_id = Uuid::new_v4();
 
         let user = service.load_user(user_id).await;
         assert!(user.is_ok());
         assert_eq!(user.unwrap().id, user_id);
+    }
+
+    #[tokio::test]
+    async fn test_user_service_load_tenant_no_db() {
+        let service = UserService::new();
+        let tenant_id = Uuid::new_v4();
+
+        let tenant = service.load_tenant(tenant_id).await;
+        assert!(tenant.is_ok());
+        assert_eq!(tenant.unwrap().id, tenant_id);
+    }
+
+    #[tokio::test]
+    async fn test_user_service_load_user_and_tenant_no_db() {
+        let service = UserService::new();
+        let user_id = Uuid::new_v4();
+
+        let result = service.load_user_and_tenant(user_id).await;
+        assert!(result.is_ok());
+        let (user, _tenant) = result.unwrap();
+        assert_eq!(user.id, user_id);
     }
 }

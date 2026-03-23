@@ -2,8 +2,8 @@
 //!
 //! 处理 API Key 的验证和解析。
 
-use keycompute_types::{KeyComputeError, Result};
 use keycompute_db::{ApiKey, User};
+use keycompute_types::{KeyComputeError, Result};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -52,9 +52,7 @@ impl ApiKeyValidator {
     pub async fn validate(&self, key: &str) -> Result<AuthContext> {
         // 检查格式
         if !key.starts_with("sk-") {
-            return Err(KeyComputeError::AuthError(
-                "Invalid API key format".into(),
-            ));
+            return Err(KeyComputeError::AuthError("Invalid API key format".into()));
         }
 
         // 计算 key 的 hash
@@ -70,15 +68,11 @@ impl ApiKeyValidator {
     }
 
     /// 从数据库验证 API Key
-    async fn validate_from_database(
-        &self,
-        pool: &PgPool,
-        key_hash: &str,
-    ) -> Result<AuthContext> {
+    async fn validate_from_database(&self, pool: &PgPool, key_hash: &str) -> Result<AuthContext> {
         // 查询 API Key
-        let api_key = ApiKey::find_by_hash(pool, key_hash)
-            .await
-            .map_err(|e| KeyComputeError::DatabaseError(format!("Failed to query API key: {}", e)))?;
+        let api_key = ApiKey::find_by_hash(pool, key_hash).await.map_err(|e| {
+            KeyComputeError::DatabaseError(format!("Failed to query API key: {}", e))
+        })?;
 
         let Some(api_key) = api_key else {
             tracing::warn!(key_hash = %key_hash, "API key not found");
@@ -107,6 +101,43 @@ impl ApiKeyValidator {
             return Err(KeyComputeError::AuthError("User not found".into()));
         };
 
+        // 验证用户租户 ID 与 API Key 租户 ID 一致
+        if user.tenant_id != api_key.tenant_id {
+            tracing::warn!(
+                user_id = %user.id,
+                user_tenant_id = %user.tenant_id,
+                api_key_tenant_id = %api_key.tenant_id,
+                "User tenant does not match API key tenant"
+            );
+            return Err(KeyComputeError::AuthError("User tenant mismatch".into()));
+        }
+
+        // 查询租户信息并验证状态
+        use keycompute_db::Tenant;
+        let tenant = Tenant::find_by_id(pool, user.tenant_id)
+            .await
+            .map_err(|e| {
+                KeyComputeError::DatabaseError(format!("Failed to query tenant: {}", e))
+            })?;
+
+        let Some(tenant) = tenant else {
+            tracing::warn!(tenant_id = %user.tenant_id, "Tenant not found");
+            return Err(KeyComputeError::AuthError("Tenant not found".into()));
+        };
+
+        // 检查租户状态
+        if !tenant.is_active() {
+            tracing::warn!(
+                tenant_id = %tenant.id,
+                status = %tenant.status,
+                "Tenant is not active"
+            );
+            return Err(KeyComputeError::AuthError(format!(
+                "Tenant is not active: {}",
+                tenant.status
+            )));
+        }
+
         // 更新最后使用时间
         let _ = api_key.update_last_used(pool).await;
 
@@ -114,17 +145,26 @@ impl ApiKeyValidator {
             user_id = %user.id,
             tenant_id = %user.tenant_id,
             api_key_id = %api_key.id,
+            role = %user.role,
             "API key validated successfully"
         );
 
         // 构建权限列表
         let permissions = match user.role.as_str() {
-            "admin" => vec![
+            "admin" | "system" => vec![
                 Permission::UseApi,
                 Permission::ManageUsers,
                 Permission::ManageApiKeys,
                 Permission::ViewBilling,
                 Permission::ManageBilling,
+            ],
+            "tenant_admin" => vec![
+                Permission::UseApi,
+                Permission::ViewUsage,
+                Permission::ManageApiKeys,
+                Permission::ManageUsers,
+                Permission::ManageTenant,
+                Permission::ViewBilling,
             ],
             "user" => vec![Permission::UseApi, Permission::ViewBilling],
             _ => vec![Permission::UseApi],
@@ -136,6 +176,8 @@ impl ApiKeyValidator {
             api_key_id: api_key.id,
             role: user.role,
             permissions,
+            user_info: None,
+            tenant_info: None,
         })
     }
 
@@ -154,6 +196,8 @@ impl ApiKeyValidator {
             api_key_id,
             role: "user".to_string(),
             permissions: vec![Permission::UseApi],
+            user_info: None,
+            tenant_info: None,
         })
     }
 

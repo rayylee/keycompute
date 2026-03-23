@@ -24,10 +24,9 @@ pub fn calculate_amount(
     output_tokens: u32,
     pricing: &PricingSnapshot,
 ) -> Decimal {
-    let input_cost = Decimal::from(input_tokens) / Decimal::from(1000)
-        * pricing.input_price_per_1k;
-    let output_cost = Decimal::from(output_tokens) / Decimal::from(1000)
-        * pricing.output_price_per_1k;
+    let input_cost = Decimal::from(input_tokens) / Decimal::from(1000) * pricing.input_price_per_1k;
+    let output_cost =
+        Decimal::from(output_tokens) / Decimal::from(1000) * pricing.output_price_per_1k;
     input_cost + output_cost
 }
 
@@ -48,10 +47,7 @@ pub fn calculate_upstream_cost(
 /// 计算毛利
 ///
 /// profit = user_amount - upstream_cost
-pub fn calculate_profit(
-    user_amount: Decimal,
-    upstream_cost: Decimal,
-) -> Decimal {
+pub fn calculate_profit(user_amount: Decimal, upstream_cost: Decimal) -> Decimal {
     user_amount - upstream_cost
 }
 
@@ -64,7 +60,7 @@ mod tests {
         PricingSnapshot {
             model_name: "gpt-4o".to_string(),
             currency: "CNY".to_string(),
-            input_price_per_1k: Decimal::from(1),  // 1元/1k tokens
+            input_price_per_1k: Decimal::from(1), // 1元/1k tokens
             output_price_per_1k: Decimal::from(2), // 2元/1k tokens
         }
     }

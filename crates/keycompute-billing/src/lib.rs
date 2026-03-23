@@ -37,7 +37,10 @@ impl BillingTrigger {
         status: &str,
         billing: &BillingService,
     ) -> crate::usage_log::NewUsageLog {
-        billing.finalize(ctx, provider_name, account_id, status).await.unwrap()
+        billing
+            .finalize(ctx, provider_name, account_id, status)
+            .await
+            .unwrap()
     }
 }
 

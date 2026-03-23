@@ -2,8 +2,8 @@
 //!
 //! 将内部请求标准化为 Provider 格式。
 
-use keycompute_types::RequestContext;
 use keycompute_provider_trait::UpstreamRequest;
+use keycompute_types::RequestContext;
 
 /// 请求标准化器
 #[derive(Debug, Clone, Default)]
@@ -18,7 +18,12 @@ impl RequestNormalizer {
     /// 标准化请求
     ///
     /// 将内部 RequestContext 转换为上游 UpstreamRequest
-    pub fn normalize(&self, ctx: &RequestContext, endpoint: &str, api_key: &str) -> UpstreamRequest {
+    pub fn normalize(
+        &self,
+        ctx: &RequestContext,
+        endpoint: &str,
+        api_key: &str,
+    ) -> UpstreamRequest {
         let messages: Vec<keycompute_provider_trait::UpstreamMessage> = ctx
             .messages
             .iter()

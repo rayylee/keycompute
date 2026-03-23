@@ -3,7 +3,9 @@
 //! 验证可观测性：日志、指标、追踪
 
 use integration_tests::common::VerificationChain;
-use keycompute_observability::metrics::{MetricsCollector, REQUEST_TOTAL, TOKENS_TOTAL, INPUT_TOKENS_TOTAL, ACTIVE_REQUESTS};
+use keycompute_observability::metrics::{
+    ACTIVE_REQUESTS, INPUT_TOKENS_TOTAL, MetricsCollector, REQUEST_TOTAL, TOKENS_TOTAL,
+};
 
 /// 测试指标采集
 #[test]
@@ -12,7 +14,7 @@ fn test_observability_metrics() {
 
     // 1. 初始化指标
     keycompute_observability::init_metrics();
-    
+
     // 2. 测试请求计数器
     let initial = REQUEST_TOTAL.get();
     chain.add_step(
@@ -115,7 +117,7 @@ fn test_observability_logger() {
     let _ = std::panic::catch_unwind(|| {
         keycompute_observability::init_logger();
     });
-    
+
     chain.add_step(
         "keycompute-observability",
         "init_logger",
@@ -146,7 +148,7 @@ fn test_observability_init() {
     let _ = std::panic::catch_unwind(|| {
         keycompute_observability::init_observability();
     });
-    
+
     chain.add_step(
         "keycompute-observability",
         "init_observability",

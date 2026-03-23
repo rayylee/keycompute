@@ -5,18 +5,16 @@
 use crate::{
     handlers::{
         calculate_cost, chat_completions, check_provider_health, debug_routing, get_billing_stats,
-        get_execution_stats, get_gateway_status, get_pricing, get_pricing_cost, get_provider_health,
-        health_check, list_billing_records, list_models, trigger_billing,
+        get_execution_stats, get_gateway_status, get_pricing, get_pricing_cost,
+        get_provider_health, health_check, list_billing_records, list_models, trigger_billing,
     },
-    middleware::{
-        cors_layer, rate_limit_middleware, request_logger, trace_id_middleware,
-    },
+    middleware::{cors_layer, rate_limit_middleware, request_logger, trace_id_middleware},
     state::AppState,
 };
 use axum::{
+    Router,
     middleware::from_fn_with_state,
     routing::{get, post},
-    Router,
 };
 use tower_http::trace::TraceLayer;
 

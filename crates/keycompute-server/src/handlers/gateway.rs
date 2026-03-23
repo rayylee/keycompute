@@ -3,10 +3,7 @@
 //! 用于调试 Gateway 执行状态和 Provider 健康情况
 
 use crate::{error::Result, state::AppState};
-use axum::{
-    extract::State,
-    Json,
-};
+use axum::{Json, extract::State};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -59,18 +56,16 @@ pub async fn get_gateway_status(
 ) -> Result<Json<GatewayStatusResponse>> {
     // TODO: 从 GatewayExecutor 获取真实的 Provider 列表和状态
     // 目前返回模拟数据
-    let providers = vec![
-        ProviderInfo {
-            name: "openai".to_string(),
-            supported_models: vec![
-                "gpt-4o".to_string(),
-                "gpt-4o-mini".to_string(),
-                "gpt-4-turbo".to_string(),
-                "gpt-3.5-turbo".to_string(),
-            ],
-            healthy: true,
-        },
-    ];
+    let providers = vec![ProviderInfo {
+        name: "openai".to_string(),
+        supported_models: vec![
+            "gpt-4o".to_string(),
+            "gpt-4o-mini".to_string(),
+            "gpt-4-turbo".to_string(),
+            "gpt-3.5-turbo".to_string(),
+        ],
+        healthy: true,
+    }];
 
     Ok(Json(GatewayStatusResponse {
         available: !providers.is_empty(),
@@ -116,12 +111,13 @@ pub async fn check_provider_health(
         provider: request.provider,
         healthy,
         latency_ms: if healthy { Some(150) } else { None },
-        error: if healthy { None } else { Some("Provider not configured".to_string()) },
+        error: if healthy {
+            None
+        } else {
+            Some("Provider not configured".to_string())
+        },
         models: if healthy {
-            vec![
-                "gpt-4o".to_string(),
-                "gpt-4o-mini".to_string(),
-            ]
+            vec!["gpt-4o".to_string(), "gpt-4o-mini".to_string()]
         } else {
             vec![]
         },
@@ -159,9 +155,7 @@ pub struct ProviderStats {
 }
 
 /// 获取执行统计
-pub async fn get_execution_stats(
-    State(_state): State<AppState>,
-) -> Result<Json<ExecutionStats>> {
+pub async fn get_execution_stats(State(_state): State<AppState>) -> Result<Json<ExecutionStats>> {
     // TODO: 从 GatewayExecutor 获取真实的统计数据
     // 目前返回模拟数据
     let mut provider_stats = HashMap::new();

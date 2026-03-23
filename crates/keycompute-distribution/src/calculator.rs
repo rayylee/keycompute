@@ -91,10 +91,7 @@ pub fn calculate_total_share(shares: &[DistributionShare]) -> Decimal {
 /// 验证分成比例
 ///
 /// 确保分成总额不超过用户金额的一定比例（如 30%）
-pub fn validate_share_ratio(
-    total_share_ratio: Decimal,
-    max_ratio: Decimal,
-) -> bool {
+pub fn validate_share_ratio(total_share_ratio: Decimal, max_ratio: Decimal) -> bool {
     total_share_ratio <= max_ratio
 }
 
@@ -146,7 +143,7 @@ mod tests {
         );
 
         assert_eq!(shares.len(), 2);
-        
+
         // Level 1
         assert_eq!(shares[0].share_amount, Decimal::from(10)); // 100 * 0.1
         assert_eq!(shares[0].beneficiary_id, level1_beneficiary);

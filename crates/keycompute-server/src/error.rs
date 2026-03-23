@@ -3,9 +3,9 @@
 //! 定义 API 错误类型和响应格式
 
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use serde_json::json;
 use std::fmt;
@@ -84,8 +84,12 @@ impl From<keycompute_types::KeyComputeError> for ApiError {
     fn from(err: keycompute_types::KeyComputeError) -> Self {
         match err {
             keycompute_types::KeyComputeError::AuthError(msg) => ApiError::Auth(msg),
-            keycompute_types::KeyComputeError::RateLimitExceeded => ApiError::RateLimit("Rate limit exceeded".to_string()),
-            keycompute_types::KeyComputeError::RoutingFailed => ApiError::Routing("No available provider".to_string()),
+            keycompute_types::KeyComputeError::RateLimitExceeded => {
+                ApiError::RateLimit("Rate limit exceeded".to_string())
+            }
+            keycompute_types::KeyComputeError::RoutingFailed => {
+                ApiError::Routing("No available provider".to_string())
+            }
             keycompute_types::KeyComputeError::ProviderError(msg) => ApiError::Provider(msg),
             keycompute_types::KeyComputeError::Internal(msg) => ApiError::Internal(msg),
             _ => ApiError::Internal(err.to_string()),
@@ -105,7 +109,13 @@ mod tests {
 
     #[test]
     fn test_error_type() {
-        assert_eq!(error_type(&ApiError::Auth("test".to_string())), "authentication_error");
-        assert_eq!(error_type(&ApiError::RateLimit("test".to_string())), "rate_limit_error");
+        assert_eq!(
+            error_type(&ApiError::Auth("test".to_string())),
+            "authentication_error"
+        );
+        assert_eq!(
+            error_type(&ApiError::RateLimit("test".to_string())),
+            "rate_limit_error"
+        );
     }
 }

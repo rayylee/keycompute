@@ -1,8 +1,170 @@
 //! 模拟数据库
 
-use rust_decimal::Decimal;
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use rust_decimal::Decimal;
+use std::collections::HashMap;
+use std::sync::RwLock;
+use uuid::Uuid;
+
+/// 模拟用户数据
+#[derive(Debug, Clone)]
+pub struct MockUser {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub email: String,
+    pub name: Option<String>,
+    pub role: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl MockUser {
+    pub fn new(tenant_id: Uuid, email: impl Into<String>, role: impl Into<String>) -> Self {
+        let now = Utc::now();
+        Self {
+            id: Uuid::new_v4(),
+            tenant_id,
+            email: email.into(),
+            name: None,
+            role: role.into(),
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    pub fn with_name(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
+        self
+    }
+
+    pub fn with_id(mut self, id: Uuid) -> Self {
+        self.id = id;
+        self
+    }
+}
+
+/// 模拟租户数据
+#[derive(Debug, Clone)]
+pub struct MockTenant {
+    pub id: Uuid,
+    pub name: String,
+    pub slug: String,
+    pub description: Option<String>,
+    pub status: String,
+    pub default_rpm_limit: i32,
+    pub default_tpm_limit: i32,
+    pub distribution_enabled: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl MockTenant {
+    pub fn new(name: impl Into<String>, slug: impl Into<String>) -> Self {
+        let now = Utc::now();
+        Self {
+            id: Uuid::new_v4(),
+            name: name.into(),
+            slug: slug.into(),
+            description: None,
+            status: "active".to_string(),
+            default_rpm_limit: 60,
+            default_tpm_limit: 100000,
+            distribution_enabled: false,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    pub fn with_id(mut self, id: Uuid) -> Self {
+        self.id = id;
+        self
+    }
+
+    pub fn with_status(mut self, status: impl Into<String>) -> Self {
+        self.status = status.into();
+        self
+    }
+
+    pub fn with_limits(mut self, rpm: i32, tpm: i32) -> Self {
+        self.default_rpm_limit = rpm;
+        self.default_tpm_limit = tpm;
+        self
+    }
+
+    pub fn with_distribution(mut self, enabled: bool) -> Self {
+        self.distribution_enabled = enabled;
+        self
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.status == "active"
+    }
+}
+
+/// 模拟 API Key 数据
+#[derive(Debug, Clone)]
+pub struct MockApiKey {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub name: String,
+    pub key_hash: String,
+    pub key_preview: String,
+    pub revoked: bool,
+    pub revoked_at: Option<DateTime<Utc>>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub last_used_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+impl MockApiKey {
+    pub fn new(user_id: Uuid, tenant_id: Uuid, key_hash: impl Into<String>) -> Self {
+        let now = Utc::now();
+        Self {
+            id: Uuid::new_v4(),
+            tenant_id,
+            user_id,
+            name: "Test Key".to_string(),
+            key_hash: key_hash.into(),
+            key_preview: "sk-****".to_string(),
+            revoked: false,
+            revoked_at: None,
+            expires_at: None,
+            last_used_at: None,
+            created_at: now,
+        }
+    }
+
+    pub fn with_id(mut self, id: Uuid) -> Self {
+        self.id = id;
+        self
+    }
+
+    pub fn with_revoked(mut self, revoked: bool) -> Self {
+        self.revoked = revoked;
+        if revoked {
+            self.revoked_at = Some(Utc::now());
+        }
+        self
+    }
+
+    pub fn with_expires_at(mut self, expires_at: DateTime<Utc>) -> Self {
+        self.expires_at = Some(expires_at);
+        self
+    }
+
+    pub fn is_valid(&self) -> bool {
+        if self.revoked {
+            return false;
+        }
+        if let Some(expires) = self.expires_at {
+            if expires < Utc::now() {
+                return false;
+            }
+        }
+        true
+    }
+}
 
 /// 模拟 UsageLog 记录
 #[derive(Debug, Clone)]
@@ -62,11 +224,7 @@ impl MockUsageLog {
         self
     }
 
-    pub fn with_pricing(
-        mut self,
-        input_price: Decimal,
-        output_price: Decimal,
-    ) -> Self {
+    pub fn with_pricing(mut self, input_price: Decimal, output_price: Decimal) -> Self {
         self.input_unit_price_snapshot = input_price;
         self.output_unit_price_snapshot = output_price;
         self.user_amount = self.calculate_amount();
@@ -74,8 +232,8 @@ impl MockUsageLog {
     }
 
     fn calculate_amount(&self) -> Decimal {
-        let input_cost = Decimal::from(self.input_tokens) * self.input_unit_price_snapshot
-            / Decimal::from(1000);
+        let input_cost =
+            Decimal::from(self.input_tokens) * self.input_unit_price_snapshot / Decimal::from(1000);
         let output_cost = Decimal::from(self.output_tokens) * self.output_unit_price_snapshot
             / Decimal::from(1000);
         input_cost + output_cost
@@ -153,6 +311,185 @@ impl MockDatabase {
     }
 }
 
+/// 用户/租户模拟数据库
+#[derive(Debug)]
+pub struct MockUserTenantDatabase {
+    tenants: RwLock<HashMap<Uuid, MockTenant>>,
+    users: RwLock<HashMap<Uuid, MockUser>>,
+    api_keys: RwLock<HashMap<Uuid, MockApiKey>>,
+    api_keys_by_hash: RwLock<HashMap<String, Uuid>>,
+    users_by_email: RwLock<HashMap<String, Uuid>>,
+}
+
+impl Default for MockUserTenantDatabase {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MockUserTenantDatabase {
+    pub fn new() -> Self {
+        Self {
+            tenants: RwLock::new(HashMap::new()),
+            users: RwLock::new(HashMap::new()),
+            api_keys: RwLock::new(HashMap::new()),
+            api_keys_by_hash: RwLock::new(HashMap::new()),
+            users_by_email: RwLock::new(HashMap::new()),
+        }
+    }
+
+    // === 租户操作 ===
+
+    pub fn insert_tenant(&self, tenant: MockTenant) {
+        let id = tenant.id;
+        self.tenants.write().unwrap().insert(id, tenant);
+    }
+
+    pub fn get_tenant(&self, id: Uuid) -> Option<MockTenant> {
+        self.tenants.read().unwrap().get(&id).cloned()
+    }
+
+    pub fn get_tenant_by_slug(&self, slug: &str) -> Option<MockTenant> {
+        self.tenants
+            .read()
+            .unwrap()
+            .values()
+            .find(|t| t.slug == slug)
+            .cloned()
+    }
+
+    pub fn update_tenant_status(&self, id: Uuid, status: &str) {
+        if let Some(tenant) = self.tenants.write().unwrap().get_mut(&id) {
+            tenant.status = status.to_string();
+            tenant.updated_at = Utc::now();
+        }
+    }
+
+    // === 用户操作 ===
+
+    pub fn insert_user(&self, user: MockUser) {
+        let id = user.id;
+        let email = user.email.clone();
+        self.users.write().unwrap().insert(id, user);
+        self.users_by_email.write().unwrap().insert(email, id);
+    }
+
+    pub fn get_user(&self, id: Uuid) -> Option<MockUser> {
+        self.users.read().unwrap().get(&id).cloned()
+    }
+
+    pub fn get_user_by_email(&self, email: &str) -> Option<MockUser> {
+        let id = self.users_by_email.read().unwrap().get(email).copied()?;
+        self.get_user(id)
+    }
+
+    pub fn get_users_by_tenant(&self, tenant_id: Uuid) -> Vec<MockUser> {
+        self.users
+            .read()
+            .unwrap()
+            .values()
+            .filter(|u| u.tenant_id == tenant_id)
+            .cloned()
+            .collect()
+    }
+
+    // === API Key 操作 ===
+
+    pub fn insert_api_key(&self, api_key: MockApiKey) {
+        let id = api_key.id;
+        let key_hash = api_key.key_hash.clone();
+        self.api_keys.write().unwrap().insert(id, api_key);
+        self.api_keys_by_hash.write().unwrap().insert(key_hash, id);
+    }
+
+    pub fn get_api_key(&self, id: Uuid) -> Option<MockApiKey> {
+        self.api_keys.read().unwrap().get(&id).cloned()
+    }
+
+    pub fn get_api_key_by_hash(&self, key_hash: &str) -> Option<MockApiKey> {
+        let id = self
+            .api_keys_by_hash
+            .read()
+            .unwrap()
+            .get(key_hash)
+            .copied()?;
+        self.get_api_key(id)
+    }
+
+    pub fn revoke_api_key(&self, id: Uuid) {
+        if let Some(key) = self.api_keys.write().unwrap().get_mut(&id) {
+            key.revoked = true;
+            key.revoked_at = Some(Utc::now());
+        }
+    }
+
+    pub fn update_api_key_last_used(&self, id: Uuid) {
+        if let Some(key) = self.api_keys.write().unwrap().get_mut(&id) {
+            key.last_used_at = Some(Utc::now());
+        }
+    }
+
+    // === 辅助方法 ===
+
+    /// 清空所有数据
+    pub fn clear(&self) {
+        self.tenants.write().unwrap().clear();
+        self.users.write().unwrap().clear();
+        self.api_keys.write().unwrap().clear();
+        self.api_keys_by_hash.write().unwrap().clear();
+        self.users_by_email.write().unwrap().clear();
+    }
+
+    /// 创建测试租户并返回
+    pub fn create_test_tenant(&self) -> MockTenant {
+        let tenant = MockTenant::new("Test Tenant", "test-tenant");
+        self.insert_tenant(tenant.clone());
+        tenant
+    }
+
+    /// 创建测试用户并返回
+    pub fn create_test_user(&self, tenant_id: Uuid, role: &str) -> MockUser {
+        let email = format!("test-{}@example.com", Uuid::new_v4().simple());
+        let user = MockUser::new(tenant_id, email, role);
+        self.insert_user(user.clone());
+        user
+    }
+
+    /// 创建测试 API Key 并返回
+    pub fn create_test_api_key(&self, user_id: Uuid, tenant_id: Uuid) -> (MockApiKey, String) {
+        let raw_key = format!("sk-test-{}", Uuid::new_v4().simple());
+        let key_hash = sha256_hash(&raw_key);
+        let api_key = MockApiKey::new(user_id, tenant_id, key_hash);
+        self.insert_api_key(api_key.clone());
+        (api_key, raw_key)
+    }
+
+    /// 获取统计信息
+    pub fn stats(&self) -> MockDatabaseStats {
+        MockDatabaseStats {
+            tenant_count: self.tenants.read().unwrap().len(),
+            user_count: self.users.read().unwrap().len(),
+            api_key_count: self.api_keys.read().unwrap().len(),
+        }
+    }
+}
+
+/// 模拟数据库统计信息
+#[derive(Debug, Clone)]
+pub struct MockDatabaseStats {
+    pub tenant_count: usize,
+    pub user_count: usize,
+    pub api_key_count: usize,
+}
+
+/// SHA256 哈希
+fn sha256_hash(input: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(input.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,7 +498,7 @@ mod tests {
     fn test_mock_usage_log() {
         let ctx = super::super::MockExecutionContext::new();
         let log = MockUsageLog::new(&ctx);
-        
+
         assert_eq!(log.request_id, ctx.request_id);
         assert_eq!(log.model_name, ctx.model);
         assert!(log.user_amount > Decimal::ZERO);
@@ -172,11 +509,117 @@ mod tests {
         let db = MockDatabase::new();
         let ctx = super::super::MockExecutionContext::new();
         let log = MockUsageLog::new(&ctx);
-        
+
         db.insert_usage_log(log.clone());
-        
+
         let logs = db.get_usage_logs();
         assert_eq!(logs.len(), 1);
         assert_eq!(logs[0].request_id, ctx.request_id);
+    }
+
+    #[test]
+    fn test_mock_tenant() {
+        let tenant = MockTenant::new("Test Corp", "test-corp")
+            .with_limits(100, 50000)
+            .with_distribution(true);
+
+        assert_eq!(tenant.name, "Test Corp");
+        assert_eq!(tenant.slug, "test-corp");
+        assert_eq!(tenant.default_rpm_limit, 100);
+        assert_eq!(tenant.default_tpm_limit, 50000);
+        assert!(tenant.distribution_enabled);
+        assert!(tenant.is_active());
+    }
+
+    #[test]
+    fn test_mock_tenant_status() {
+        let tenant = MockTenant::new("Test", "test").with_status("suspended");
+        assert!(!tenant.is_active());
+    }
+
+    #[test]
+    fn test_mock_user() {
+        let tenant_id = Uuid::new_v4();
+        let user = MockUser::new(tenant_id, "test@example.com", "admin").with_name("Test User");
+
+        assert_eq!(user.email, "test@example.com");
+        assert_eq!(user.role, "admin");
+        assert_eq!(user.name, Some("Test User".to_string()));
+        assert_eq!(user.tenant_id, tenant_id);
+    }
+
+    #[test]
+    fn test_mock_api_key() {
+        let user_id = Uuid::new_v4();
+        let tenant_id = Uuid::new_v4();
+        let key = MockApiKey::new(user_id, tenant_id, "test-hash");
+
+        assert_eq!(key.user_id, user_id);
+        assert_eq!(key.tenant_id, tenant_id);
+        assert!(key.is_valid());
+    }
+
+    #[test]
+    fn test_mock_api_key_revoked() {
+        let key = MockApiKey::new(Uuid::new_v4(), Uuid::new_v4(), "hash").with_revoked(true);
+        assert!(!key.is_valid());
+    }
+
+    #[test]
+    fn test_mock_api_key_expired() {
+        let key = MockApiKey::new(Uuid::new_v4(), Uuid::new_v4(), "hash")
+            .with_expires_at(Utc::now() - chrono::Duration::hours(1));
+        assert!(!key.is_valid());
+    }
+
+    #[test]
+    fn test_mock_user_tenant_database() {
+        let db = MockUserTenantDatabase::new();
+
+        // 创建租户
+        let tenant = db.create_test_tenant();
+        assert!(db.get_tenant(tenant.id).is_some());
+
+        // 创建用户
+        let user = db.create_test_user(tenant.id, "user");
+        assert!(db.get_user(user.id).is_some());
+        assert!(db.get_user_by_email(&user.email).is_some());
+
+        // 创建 API Key
+        let (api_key, raw_key) = db.create_test_api_key(user.id, tenant.id);
+        assert!(db.get_api_key(api_key.id).is_some());
+        assert!(raw_key.starts_with("sk-test-"));
+
+        // 统计
+        let stats = db.stats();
+        assert_eq!(stats.tenant_count, 1);
+        assert_eq!(stats.user_count, 1);
+        assert_eq!(stats.api_key_count, 1);
+    }
+
+    #[test]
+    fn test_mock_user_tenant_database_operations() {
+        let db = MockUserTenantDatabase::new();
+
+        // 创建多个用户
+        let tenant = db.create_test_tenant();
+        let user1 = db.create_test_user(tenant.id, "user");
+        let _user2 = db.create_test_user(tenant.id, "admin");
+
+        // 按租户查询
+        let users = db.get_users_by_tenant(tenant.id);
+        assert_eq!(users.len(), 2);
+
+        // 更新租户状态
+        db.update_tenant_status(tenant.id, "suspended");
+        let updated_tenant = db.get_tenant(tenant.id).unwrap();
+        assert_eq!(updated_tenant.status, "suspended");
+
+        // 撤销 API Key
+        let (api_key, _) = db.create_test_api_key(user1.id, tenant.id);
+        assert!(db.get_api_key(api_key.id).unwrap().is_valid());
+
+        db.revoke_api_key(api_key.id);
+        assert!(!db.get_api_key(api_key.id).unwrap().is_valid());
     }
 }

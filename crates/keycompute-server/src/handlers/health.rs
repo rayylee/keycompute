@@ -1,9 +1,6 @@
 //! 健康检查处理器
 
-use axum::{
-    http::StatusCode,
-    response::Json,
-};
+use axum::{http::StatusCode, response::Json};
 use serde::Serialize;
 use std::collections::HashMap;
 

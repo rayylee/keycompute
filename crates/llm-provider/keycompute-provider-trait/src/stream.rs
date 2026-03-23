@@ -139,7 +139,13 @@ mod tests {
         assert!(matches!(delta, StreamEvent::Delta { content, .. } if content == "Hello"));
 
         let usage = StreamEvent::usage(10, 20);
-        assert!(matches!(usage, StreamEvent::Usage { input_tokens: 10, output_tokens: 20 }));
+        assert!(matches!(
+            usage,
+            StreamEvent::Usage {
+                input_tokens: 10,
+                output_tokens: 20
+            }
+        ));
 
         let done = StreamEvent::done();
         assert!(done.is_done());
@@ -158,10 +164,7 @@ mod tests {
             Some(String::from("{\"content\": \"Hello\"}"))
         );
 
-        assert_eq!(
-            parse_sse_line("data: [DONE]"),
-            Some(String::from("[DONE]"))
-        );
+        assert_eq!(parse_sse_line("data: [DONE]"), Some(String::from("[DONE]")));
 
         assert_eq!(parse_sse_line("id: 123"), None);
         assert_eq!(parse_sse_line(""), None);

@@ -3,8 +3,8 @@
 //! 验证认证流程：API Key 验证、JWT 解析、权限检查
 
 use integration_tests::common::VerificationChain;
-use keycompute_auth::{ApiKeyValidator, JwtValidator, Permission, PermissionChecker, UserInfo};
 use keycompute_auth::user::TenantInfo;
+use keycompute_auth::{ApiKeyValidator, JwtValidator, Permission, PermissionChecker, UserInfo};
 use uuid::Uuid;
 
 /// 测试 API Key 验证流程
@@ -75,16 +75,16 @@ fn test_auth_jwt_flow() {
         true,
     );
 
-    // 2. 创建 Claims（需要 role 参数）
+    // 2. 创建 Claims（需要 role 和 issuer 参数）
     let user_id = Uuid::new_v4();
     let tenant_id = Uuid::new_v4();
-    let claims = keycompute_auth::JwtClaims::new(user_id, tenant_id, "user", 1893456000);
-    
+    let claims = keycompute_auth::JwtClaims::new(user_id, tenant_id, "user", 3600, "keycompute");
+
     chain.add_step(
         "keycompute-auth",
         "JwtClaims::new",
-        format!("User ID: {:?}", claims.user_id),
-        claims.user_id == user_id,
+        format!("User ID: {:?}", claims.user_id()),
+        claims.user_id().unwrap() == user_id,
     );
 
     // 3. 检查过期
@@ -96,13 +96,24 @@ fn test_auth_jwt_flow() {
         !expired,
     );
 
-    // 4. 生成 token
-    let token = validator.generate_token(&claims).unwrap();
+    // 4. 生成 token（使用新的 API）
+    let token = validator
+        .generate_token(user_id, tenant_id, "user")
+        .unwrap();
     chain.add_step(
         "keycompute-auth",
         "JwtValidator::generate_token",
         format!("Token generated, length: {}", token.len()),
         !token.is_empty(),
+    );
+
+    // 5. 验证 token
+    let ctx = validator.validate(&token).unwrap();
+    chain.add_step(
+        "keycompute-auth",
+        "JwtValidator::validate",
+        format!("Token validated, user_id: {}", ctx.user_id),
+        ctx.user_id == user_id,
     );
 
     chain.print_report();
@@ -117,7 +128,7 @@ fn test_auth_permission_flow() {
     // 1. 创建权限
     let use_api = Permission::UseApi;
     let manage_users = Permission::ManageUsers;
-    
+
     chain.add_step(
         "keycompute-auth",
         "Permission::UseApi",
@@ -134,7 +145,7 @@ fn test_auth_permission_flow() {
     // 2. 从字符串解析
     let parsed_api = Permission::from_str("api:use");
     let parsed_manage = Permission::from_str("users:manage");
-    
+
     chain.add_step(
         "keycompute-auth",
         "Permission::from_str_api",
@@ -152,7 +163,7 @@ fn test_auth_permission_flow() {
     let user_perms = vec![Permission::UseApi, Permission::ViewUsage];
     let has_api = PermissionChecker::check("user", &user_perms, &Permission::UseApi);
     let has_manage = PermissionChecker::check("user", &user_perms, &Permission::ManageUsers);
-    
+
     chain.add_step(
         "keycompute-auth",
         "PermissionChecker::check_api",
@@ -188,7 +199,7 @@ fn test_auth_user_info() {
     let user_id = Uuid::new_v4();
     let tenant_id = Uuid::new_v4();
     let user = UserInfo::new(user_id, tenant_id, "test@example.com", "test-user", "user");
-    
+
     chain.add_step(
         "keycompute-auth",
         "UserInfo::new",
@@ -240,7 +251,7 @@ fn test_auth_tenant_info() {
     // 1. 创建租户信息（需要 3 个参数）
     let tenant_id = Uuid::new_v4();
     let tenant = TenantInfo::new(tenant_id, "Test Tenant", "test-tenant");
-    
+
     chain.add_step(
         "keycompute-auth",
         "TenantInfo::new",

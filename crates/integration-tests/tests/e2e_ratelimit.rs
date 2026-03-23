@@ -3,7 +3,9 @@
 //! 验证限流模块在各场景下的行为
 
 use integration_tests::common::VerificationChain;
-use keycompute_ratelimit::{MemoryRateLimiter, RateLimitConfig, RateLimitKey, RateLimitService, RateLimiter};
+use keycompute_ratelimit::{
+    MemoryRateLimiter, RateLimitConfig, RateLimitKey, RateLimitService, RateLimiter,
+};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -35,11 +37,7 @@ async fn test_ratelimit_basic_flow() {
     );
 
     // 3. 创建限流键
-    let key = RateLimitKey::new(
-        Uuid::new_v4(),
-        Uuid::new_v4(),
-        Uuid::new_v4(),
-    );
+    let key = RateLimitKey::new(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
     chain.add_step(
         "keycompute-ratelimit",
         "RateLimitKey::new",
@@ -84,11 +82,7 @@ async fn test_ratelimit_service() {
     );
 
     // 2. 创建限流键
-    let key = RateLimitKey::new(
-        Uuid::new_v4(),
-        Uuid::new_v4(),
-        Uuid::new_v4(),
-    );
+    let key = RateLimitKey::new(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
 
     // 3. 检查并记录
     let result = service.check_and_record(&key).await;
@@ -145,7 +139,7 @@ fn test_ratelimit_key_dimensions() {
     let mut map = HashMap::new();
     map.insert(key1.clone(), 1);
     map.insert(key2.clone(), 2);
-    
+
     chain.add_step(
         "keycompute-ratelimit",
         "RateLimitKey::hash",

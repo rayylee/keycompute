@@ -11,6 +11,12 @@ pub struct Tenant {
     pub slug: String,
     pub description: Option<String>,
     pub status: String,
+    /// 默认 RPM 限制
+    pub default_rpm_limit: i32,
+    /// 默认 TPM 限制
+    pub default_tpm_limit: i32,
+    /// 是否启用分销
+    pub distribution_enabled: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -21,6 +27,15 @@ pub struct CreateTenantRequest {
     pub name: String,
     pub slug: String,
     pub description: Option<String>,
+    /// 默认 RPM 限制
+    #[serde(default)]
+    pub default_rpm_limit: Option<i32>,
+    /// 默认 TPM 限制
+    #[serde(default)]
+    pub default_tpm_limit: Option<i32>,
+    /// 是否启用分销
+    #[serde(default)]
+    pub distribution_enabled: Option<bool>,
 }
 
 /// 更新租户请求
@@ -29,6 +44,9 @@ pub struct UpdateTenantRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     pub status: Option<String>,
+    pub default_rpm_limit: Option<i32>,
+    pub default_tpm_limit: Option<i32>,
+    pub distribution_enabled: Option<bool>,
 }
 
 impl Tenant {
@@ -39,14 +57,17 @@ impl Tenant {
     ) -> Result<Tenant, sqlx::Error> {
         let tenant = sqlx::query_as::<_, Tenant>(
             r#"
-            INSERT INTO tenants (name, slug, description)
-            VALUES ($1, $2, $3)
+            INSERT INTO tenants (name, slug, description, default_rpm_limit, default_tpm_limit, distribution_enabled)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *
             "#,
         )
         .bind(&req.name)
         .bind(&req.slug)
         .bind(&req.description)
+        .bind(req.default_rpm_limit.unwrap_or(60))
+        .bind(req.default_tpm_limit.unwrap_or(100000))
+        .bind(req.distribution_enabled.unwrap_or(false))
         .fetch_one(pool)
         .await?;
 
@@ -85,6 +106,17 @@ impl Tenant {
         Ok(tenants)
     }
 
+    /// 查找激活的租户
+    pub async fn find_active(pool: &sqlx::PgPool) -> Result<Vec<Tenant>, sqlx::Error> {
+        let tenants = sqlx::query_as::<_, Tenant>(
+            "SELECT * FROM tenants WHERE status = 'active' ORDER BY created_at DESC",
+        )
+        .fetch_all(pool)
+        .await?;
+
+        Ok(tenants)
+    }
+
     /// 更新租户
     pub async fn update(
         &self,
@@ -97,14 +129,20 @@ impl Tenant {
             SET name = COALESCE($1, name),
                 description = COALESCE($2, description),
                 status = COALESCE($3, status),
+                default_rpm_limit = COALESCE($4, default_rpm_limit),
+                default_tpm_limit = COALESCE($5, default_tpm_limit),
+                distribution_enabled = COALESCE($6, distribution_enabled),
                 updated_at = NOW()
-            WHERE id = $4
+            WHERE id = $7
             RETURNING *
             "#,
         )
         .bind(&req.name)
         .bind(&req.description)
         .bind(&req.status)
+        .bind(&req.default_rpm_limit)
+        .bind(&req.default_tpm_limit)
+        .bind(&req.distribution_enabled)
         .bind(self.id)
         .fetch_one(pool)
         .await?;
@@ -120,5 +158,10 @@ impl Tenant {
             .await?;
 
         Ok(())
+    }
+
+    /// 检查租户是否激活
+    pub fn is_active(&self) -> bool {
+        self.status == "active"
     }
 }

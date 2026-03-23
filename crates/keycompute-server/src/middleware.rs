@@ -18,7 +18,7 @@ pub async fn request_logger(req: Request, next: Next) -> Response {
     let start = Instant::now();
     let method = req.method().clone();
     let uri = req.uri().clone();
-    
+
     // 提前克隆 request_id，避免借用冲突
     let request_id = req
         .headers()
@@ -64,10 +64,8 @@ pub async fn trace_id_middleware(mut req: Request, next: Next) -> Response {
     // 如果没有 X-Request-ID，生成一个
     if !req.headers().contains_key("X-Request-ID") {
         let request_id = uuid::Uuid::new_v4().to_string();
-        req.headers_mut().insert(
-            "X-Request-ID",
-            request_id.parse().unwrap(),
-        );
+        req.headers_mut()
+            .insert("X-Request-ID", request_id.parse().unwrap());
     }
     next.run(req).await
 }
@@ -83,9 +81,7 @@ pub async fn rate_limit_middleware(
 ) -> Response {
     // 从请求头中提取认证信息
     let headers = req.headers();
-    let auth_header = headers
-        .get("Authorization")
-        .and_then(|h| h.to_str().ok());
+    let auth_header = headers.get("Authorization").and_then(|h| h.to_str().ok());
 
     // 如果没有认证头，直接放行（由认证中间件处理）
     let Some(auth_header) = auth_header else {
@@ -136,7 +132,7 @@ pub async fn rate_limit_middleware(
                 })
                 .to_string(),
             )
-            .into_response()
+                .into_response()
         }
         Err(e) => {
             // 限流检查出错，记录错误但放行（避免阻塞正常请求）

@@ -5,8 +5,8 @@
 use integration_tests::common::VerificationChain;
 use integration_tests::mocks::MockExecutionContext;
 use integration_tests::mocks::database::MockUsageLog;
-use keycompute_billing::{calculate_amount, UsageSource};
-use keycompute_distribution::{DistributionShare, DistributionLevel};
+use keycompute_billing::{UsageSource, calculate_amount};
+use keycompute_distribution::{DistributionLevel, DistributionShare};
 use keycompute_types::{PricingSnapshot, UsageAccumulator};
 use rust_decimal::Decimal;
 
@@ -19,21 +19,24 @@ fn test_billing_calculation_flow() {
     let pricing = PricingSnapshot {
         model_name: "gpt-4o".to_string(),
         currency: "CNY".to_string(),
-        input_price_per_1k: Decimal::from(1),   // 1元/1K tokens
-        output_price_per_1k: Decimal::from(2),  // 2元/1K tokens
+        input_price_per_1k: Decimal::from(1),  // 1元/1K tokens
+        output_price_per_1k: Decimal::from(2), // 2元/1K tokens
     };
     chain.add_step(
         "keycompute-types",
         "PricingSnapshot::new",
-        format!("Input: {:?}, Output: {:?}", pricing.input_price_per_1k, pricing.output_price_per_1k),
+        format!(
+            "Input: {:?}, Output: {:?}",
+            pricing.input_price_per_1k, pricing.output_price_per_1k
+        ),
         true,
     );
 
     // 2. 创建用量累积器并添加用量
     let usage = UsageAccumulator::default();
-    usage.set_input(1000);  // 1000 input tokens
-    usage.add_output(500);   // 500 output tokens
-    
+    usage.set_input(1000); // 1000 input tokens
+    usage.add_output(500); // 500 output tokens
+
     let (input_tokens, output_tokens) = usage.snapshot();
     chain.add_step(
         "keycompute-types",
@@ -45,7 +48,7 @@ fn test_billing_calculation_flow() {
     // 3. 计算费用
     let amount = calculate_amount(input_tokens, output_tokens, &pricing);
     let expected = Decimal::from(2); // (1000*1 + 500*2) / 1000 = 2
-    
+
     chain.add_step(
         "keycompute-billing",
         "BillingCalculator::calculate",
@@ -55,8 +58,9 @@ fn test_billing_calculation_flow() {
 
     // 4. 验证计算细节
     let input_cost = Decimal::from(input_tokens) / Decimal::from(1000) * pricing.input_price_per_1k;
-    let output_cost = Decimal::from(output_tokens) / Decimal::from(1000) * pricing.output_price_per_1k;
-    
+    let output_cost =
+        Decimal::from(output_tokens) / Decimal::from(1000) * pricing.output_price_per_1k;
+
     chain.add_step(
         "keycompute-billing",
         "calculate_input_cost",
@@ -82,12 +86,32 @@ fn test_billing_with_different_pricing() {
     // 测试用例：不同的输入/输出价格
     let test_cases = vec![
         // (input_price, output_price, input_tokens, output_tokens, expected)
-        (Decimal::from(1), Decimal::from(2), 1000, 500, Decimal::from(2)),
-        (Decimal::from(5), Decimal::from(10), 2000, 1000, Decimal::from(20)),
-        (Decimal::from(0), Decimal::from(0), 1000, 1000, Decimal::ZERO),
+        (
+            Decimal::from(1),
+            Decimal::from(2),
+            1000,
+            500,
+            Decimal::from(2),
+        ),
+        (
+            Decimal::from(5),
+            Decimal::from(10),
+            2000,
+            1000,
+            Decimal::from(20),
+        ),
+        (
+            Decimal::from(0),
+            Decimal::from(0),
+            1000,
+            1000,
+            Decimal::ZERO,
+        ),
     ];
 
-    for (i, (input_price, output_price, input_tokens, output_tokens, expected)) in test_cases.iter().enumerate() {
+    for (i, (input_price, output_price, input_tokens, output_tokens, expected)) in
+        test_cases.iter().enumerate()
+    {
         let pricing = PricingSnapshot {
             model_name: format!("test-model-{}", i),
             currency: "CNY".to_string(),
@@ -120,7 +144,7 @@ fn test_distribution_calculation_flow() {
     let usage_log = MockUsageLog::new(&ctx)
         .with_tokens(1000, 500)
         .with_pricing(Decimal::from(1), Decimal::from(2));
-    
+
     chain.add_step(
         "integration-tests::mocks",
         "MockUsageLog::new",
@@ -131,7 +155,7 @@ fn test_distribution_calculation_flow() {
     // 2. 创建分销规则（二级分销）
     let beneficiary1 = uuid::Uuid::new_v4();
     let beneficiary2 = uuid::Uuid::new_v4();
-    
+
     let rules = vec![
         (beneficiary1, Decimal::from_f64_retain(0.7).unwrap()), // 70%
         (beneficiary2, Decimal::from_f64_retain(0.3).unwrap()), // 30%
@@ -139,7 +163,7 @@ fn test_distribution_calculation_flow() {
 
     // 3. 计算分销
     let shares = calculate_distribution_shares(&usage_log, &rules);
-    
+
     chain.add_step(
         "keycompute-distribution",
         "calculate_shares",
@@ -150,11 +174,14 @@ fn test_distribution_calculation_flow() {
     // 4. 验证分销金额
     let total_share: Decimal = shares.iter().map(|s| s.share_amount).sum();
     let diff = (total_share - usage_log.user_amount).abs();
-    
+
     chain.add_step(
         "keycompute-distribution",
         "verify_total_share",
-        format!("Total: {:?}, Expected: {:?}, Diff: {:?}", total_share, usage_log.user_amount, diff),
+        format!(
+            "Total: {:?}, Expected: {:?}, Diff: {:?}",
+            total_share, usage_log.user_amount, diff
+        ),
         diff < Decimal::from_f64_retain(0.0001).unwrap(),
     );
 
@@ -164,14 +191,19 @@ fn test_distribution_calculation_flow() {
         chain.add_step(
             "keycompute-distribution",
             Box::leak(step_name.into_boxed_str()),
-            format!("Beneficiary: {:?}, Ratio: {:?}, Amount: {:?}", 
-                share.beneficiary_id, share.share_ratio, share.share_amount),
+            format!(
+                "Beneficiary: {:?}, Ratio: {:?}, Amount: {:?}",
+                share.beneficiary_id, share.share_ratio, share.share_amount
+            ),
             share.share_amount > Decimal::ZERO,
         );
     }
 
     chain.print_report();
-    assert!(chain.all_passed(), "Some distribution calculation steps failed");
+    assert!(
+        chain.all_passed(),
+        "Some distribution calculation steps failed"
+    );
 }
 
 /// 测试分销规则边界情况
@@ -195,11 +227,14 @@ fn test_distribution_edge_cases() {
     let single_beneficiary = uuid::Uuid::new_v4();
     let single_rule = vec![(single_beneficiary, Decimal::from(1))];
     let single_shares = calculate_distribution_shares(&usage_log, &single_rule);
-    
+
     chain.add_step(
         "keycompute-distribution",
         "single_beneficiary",
-        format!("Single share equals total: {:?}", single_shares[0].share_amount == usage_log.user_amount),
+        format!(
+            "Single share equals total: {:?}",
+            single_shares[0].share_amount == usage_log.user_amount
+        ),
         single_shares.len() == 1 && single_shares[0].share_amount == usage_log.user_amount,
     );
 
@@ -219,7 +254,11 @@ fn calculate_distribution_shares(
             beneficiary_id: *beneficiary_id,
             share_ratio: *ratio,
             share_amount: usage_log.user_amount * ratio,
-            level: if i == 0 { DistributionLevel::Level1 } else { DistributionLevel::Level2 },
+            level: if i == 0 {
+                DistributionLevel::Level1
+            } else {
+                DistributionLevel::Level2
+            },
         })
         .collect()
 }

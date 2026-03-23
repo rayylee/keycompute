@@ -4,13 +4,13 @@
 
 use crate::calculator::calculate_amount;
 use crate::usage_source::UsageSource;
-use keycompute_types::{KeyComputeError, RequestContext, Result};
+use chrono::{DateTime, Utc};
 use keycompute_db::{CreateUsageLogRequest, UsageLog};
+use keycompute_types::{KeyComputeError, RequestContext, Result};
 use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 /// 计费服务
 #[derive(Clone)]
@@ -54,11 +54,7 @@ impl BillingService {
         let total_tokens = input_tokens + output_tokens;
 
         // 计算用户应付金额
-        let user_amount = calculate_amount(
-            input_tokens,
-            output_tokens,
-            &ctx.pricing_snapshot,
-        );
+        let user_amount = calculate_amount(input_tokens, output_tokens, &ctx.pricing_snapshot);
 
         // 确定用量来源
         // 注意：这里简化处理，实际应该根据 Provider 是否报告了用量来决定
@@ -106,7 +102,9 @@ impl BillingService {
         status: &str,
     ) -> Result<UsageLog> {
         // 先执行结算
-        let new_log = self.finalize(ctx, provider_name, account_id, status).await?;
+        let new_log = self
+            .finalize(ctx, provider_name, account_id, status)
+            .await?;
 
         // 写入数据库
         let Some(pool) = &self.pool else {
@@ -123,8 +121,12 @@ impl BillingService {
                 input_tokens: new_log.input_tokens,
                 output_tokens: new_log.output_tokens,
                 total_tokens: new_log.total_tokens,
-                input_unit_price_snapshot: decimal_to_bigdecimal(&new_log.input_unit_price_snapshot),
-                output_unit_price_snapshot: decimal_to_bigdecimal(&new_log.output_unit_price_snapshot),
+                input_unit_price_snapshot: decimal_to_bigdecimal(
+                    &new_log.input_unit_price_snapshot,
+                ),
+                output_unit_price_snapshot: decimal_to_bigdecimal(
+                    &new_log.output_unit_price_snapshot,
+                ),
                 user_amount: decimal_to_bigdecimal(&new_log.user_amount),
                 currency: new_log.currency,
                 usage_source: new_log.usage_source,
@@ -155,9 +157,9 @@ impl BillingService {
             finished_at: new_log.finished_at,
         };
 
-        let saved_log = UsageLog::create(pool, &create_req)
-            .await
-            .map_err(|e| KeyComputeError::DatabaseError(format!("Failed to save usage log: {}", e)))?;
+        let saved_log = UsageLog::create(pool, &create_req).await.map_err(|e| {
+            KeyComputeError::DatabaseError(format!("Failed to save usage log: {}", e))
+        })?;
 
         tracing::info!(
             request_id = %ctx.request_id,
@@ -341,11 +343,7 @@ impl NewUsageLogBuilder {
     }
 
     /// 设置时间
-    pub fn timing(
-        mut self,
-        started_at: DateTime<Utc>,
-        finished_at: DateTime<Utc>,
-    ) -> Self {
+    pub fn timing(mut self, started_at: DateTime<Utc>, finished_at: DateTime<Utc>) -> Self {
         self.started_at = Some(started_at);
         self.finished_at = Some(finished_at);
         self
@@ -360,18 +358,31 @@ impl NewUsageLogBuilder {
             let input_price = self.input_unit_price_snapshot.unwrap_or_default();
             let output_price = self.output_unit_price_snapshot.unwrap_or_default();
             let input_cost = Decimal::from(self.input_tokens) / Decimal::from(1000) * input_price;
-            let output_cost = Decimal::from(self.output_tokens) / Decimal::from(1000) * output_price;
+            let output_cost =
+                Decimal::from(self.output_tokens) / Decimal::from(1000) * output_price;
             input_cost + output_cost
         });
 
         Ok(NewUsageLog {
             request_id: self.request_id,
-            tenant_id: self.tenant_id.ok_or_else(|| KeyComputeError::Internal("tenant_id required".into()))?,
-            user_id: self.user_id.ok_or_else(|| KeyComputeError::Internal("user_id required".into()))?,
-            api_key_id: self.api_key_id.ok_or_else(|| KeyComputeError::Internal("api_key_id required".into()))?,
-            model_name: self.model_name.ok_or_else(|| KeyComputeError::Internal("model_name required".into()))?,
-            provider_name: self.provider_name.ok_or_else(|| KeyComputeError::Internal("provider_name required".into()))?,
-            account_id: self.account_id.ok_or_else(|| KeyComputeError::Internal("account_id required".into()))?,
+            tenant_id: self
+                .tenant_id
+                .ok_or_else(|| KeyComputeError::Internal("tenant_id required".into()))?,
+            user_id: self
+                .user_id
+                .ok_or_else(|| KeyComputeError::Internal("user_id required".into()))?,
+            api_key_id: self
+                .api_key_id
+                .ok_or_else(|| KeyComputeError::Internal("api_key_id required".into()))?,
+            model_name: self
+                .model_name
+                .ok_or_else(|| KeyComputeError::Internal("model_name required".into()))?,
+            provider_name: self
+                .provider_name
+                .ok_or_else(|| KeyComputeError::Internal("provider_name required".into()))?,
+            account_id: self
+                .account_id
+                .ok_or_else(|| KeyComputeError::Internal("account_id required".into()))?,
             input_tokens: self.input_tokens,
             output_tokens: self.output_tokens,
             total_tokens,

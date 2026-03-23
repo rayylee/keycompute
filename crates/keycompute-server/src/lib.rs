@@ -46,10 +46,12 @@ pub async fn run(config: ServerConfig, state: AppState) -> crate::error::Result<
 
     info!("KeyCompute server starting on {}", addr);
 
-    let listener = tokio::net::TcpListener::bind(addr).await
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
         .map_err(|e| crate::error::ApiError::Internal(format!("Failed to bind: {}", e)))?;
 
-    axum::serve(listener, app).await
+    axum::serve(listener, app)
+        .await
         .map_err(|e| crate::error::ApiError::Internal(format!("Server error: {}", e)))?;
 
     Ok(())

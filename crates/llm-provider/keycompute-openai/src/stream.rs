@@ -3,8 +3,8 @@
 //! 将 OpenAI 的 SSE 流解析为标准化的 StreamEvent
 
 use futures::{Stream, StreamExt};
-use keycompute_provider_trait::stream::sse;
 use keycompute_provider_trait::StreamEvent;
+use keycompute_provider_trait::stream::sse;
 use keycompute_types::{KeyComputeError, Result};
 use std::pin::Pin;
 use tokio::sync::mpsc;
@@ -14,9 +14,7 @@ use crate::protocol::OpenAIStreamResponse;
 /// 解析 OpenAI SSE 流
 ///
 /// 将 reqwest 的 SSE 响应流转换为标准化的 StreamEvent 流
-pub fn parse_openai_stream<S>(
-    stream: S,
-) -> Pin<Box<dyn Stream<Item = Result<StreamEvent>> + Send>>
+pub fn parse_openai_stream<S>(stream: S) -> Pin<Box<dyn Stream<Item = Result<StreamEvent>> + Send>>
 where
     S: Stream<Item = std::result::Result<bytes::Bytes, reqwest::Error>> + Send + Unpin + 'static,
 {
@@ -63,7 +61,9 @@ where
                     }
                 }
                 Err(e) => {
-                    let _ = tx.send(Err(KeyComputeError::ProviderError(e.to_string()))).await;
+                    let _ = tx
+                        .send(Err(KeyComputeError::ProviderError(e.to_string())))
+                        .await;
                     return;
                 }
             }
@@ -78,11 +78,9 @@ where
 
 /// 解析 OpenAI 流事件 JSON
 fn parse_openai_event(data: &str) -> Result<Option<StreamEvent>> {
-    let response: OpenAIStreamResponse =
-        serde_json::from_str(data).map_err(|e| KeyComputeError::ProviderError(format!(
-            "Failed to parse OpenAI stream event: {}",
-            e
-        )))?;
+    let response: OpenAIStreamResponse = serde_json::from_str(data).map_err(|e| {
+        KeyComputeError::ProviderError(format!("Failed to parse OpenAI stream event: {}", e))
+    })?;
 
     // 检查是否有用量信息（通常在流结束时）
     if let Some(usage) = response.usage {
@@ -160,9 +158,13 @@ mod tests {
         }"#;
 
         let event = parse_openai_event(data).unwrap();
-        assert!(
-            matches!(event, Some(StreamEvent::Usage { input_tokens: 10, output_tokens: 20 }))
-        );
+        assert!(matches!(
+            event,
+            Some(StreamEvent::Usage {
+                input_tokens: 10,
+                output_tokens: 20
+            })
+        ));
     }
 
     #[test]

@@ -3,9 +3,11 @@
 //! 路由引擎，双层路由，只读无副作用。
 //! 架构约束：只读 Pricing 和 Runtime 状态快照，不写任何状态。
 
-use keycompute_runtime::{AccountStateStore, CooldownManager, ProviderHealthStore};
-use keycompute_types::{ExecutionPlan, ExecutionTarget, KeyComputeError, PricingSnapshot, RequestContext, Result};
 use keycompute_db::Account;
+use keycompute_runtime::{AccountStateStore, CooldownManager, ProviderHealthStore};
+use keycompute_types::{
+    ExecutionPlan, ExecutionTarget, KeyComputeError, PricingSnapshot, RequestContext, Result,
+};
 use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -166,7 +168,9 @@ impl RoutingEngine {
     /// 根据 RequestContext 路由到最优的 Provider 和账号
     pub async fn route(&self, ctx: &RequestContext) -> Result<ExecutionPlan> {
         // Layer1: 模型路由 - 选择 provider 排序
-        let ranked_providers = self.rank_providers(&ctx.model, &ctx.pricing_snapshot).await?;
+        let ranked_providers = self
+            .rank_providers(&ctx.model, &ctx.pricing_snapshot)
+            .await?;
 
         // Layer2: 账号路由 - 为每个 provider 选择最优账号
         let mut targets = Vec::new();
@@ -193,18 +197,14 @@ impl RoutingEngine {
     /// 综合评分 = cost_weight * cost_norm + latency_weight * latency_norm
     ///          + success_weight * (1 - success_norm) + health_weight * (1 - health_norm)
     /// 分数越低表示越优先选择
-    async fn rank_providers(
-        &self,
-        _model: &str,
-        pricing: &PricingSnapshot,
-    ) -> Result<Vec<String>> {
+    async fn rank_providers(&self, _model: &str, pricing: &PricingSnapshot) -> Result<Vec<String>> {
         // 首先过滤掉不健康的 Provider
         let healthy_providers = self.provider_health.healthy_providers(&self.providers);
-        
+
         if healthy_providers.is_empty() {
             tracing::warn!("No healthy providers available, falling back to all providers");
         }
-        
+
         // 再过滤掉冷却中的 Provider
         let available_providers: Vec<String> = healthy_providers
             .into_iter()
@@ -221,11 +221,13 @@ impl RoutingEngine {
                 !cooling
             })
             .collect();
-        
+
         if available_providers.is_empty() {
-            tracing::warn!("No available providers (all cooling down), falling back to all providers");
+            tracing::warn!(
+                "No available providers (all cooling down), falling back to all providers"
+            );
         }
-        
+
         // 使用可用 Provider 列表（如果没有可用的，使用全部）
         let candidates = if available_providers.is_empty() {
             &self.providers
@@ -243,10 +245,7 @@ impl RoutingEngine {
             .collect();
 
         // 按分数排序（分数越低越好）
-        scored_providers.sort_by(|a, b| {
-            a.1.partial_cmp(&b.1)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        scored_providers.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
         tracing::debug!(
             provider_scores = ?scored_providers,
@@ -262,49 +261,49 @@ impl RoutingEngine {
     /// 同时考虑 ProviderHealthStore 中的实时健康状态
     fn score_provider(&self, provider: &str, pricing: &PricingSnapshot) -> f64 {
         let cfg = &self.config;
-        
+
         // 1. 成本评分 (0-100，越低越好)
         let cost_score = self.calculate_cost_score(pricing);
-        
+
         // 2. 从 ProviderHealthStore 获取健康状态
         let health = self.provider_health.get_health(provider);
-        
+
         // 3. 延迟评分 (0-100，越低越好)
         let latency_score = health
             .as_ref()
             .map(|h| self.calculate_latency_score(h.avg_latency_ms))
             .unwrap_or(50.0); // 默认中等延迟
-        
+
         // 4. 成功率评分 (0-100，越高越好，所以用 100 - success_rate)
         let success_score = health
             .as_ref()
             .map(|h| 100.0 - h.success_rate)
             .unwrap_or(0.0); // 默认 100% 成功率
-        
+
         // 5. 健康评分 (0-100，越高越好，所以用 100 - health_score)
         let health_score = health
             .as_ref()
             .map(|h| 100.0 - h.health_score() as f64)
             .unwrap_or(50.0); // 默认中等健康
-        
+
         // 6. 不健康惩罚
         let unhealthy_penalty = health
             .as_ref()
             .filter(|h| !h.healthy)
             .map(|_| cfg.unhealthy_penalty)
             .unwrap_or(0.0);
-        
+
         // 7. 综合评分（加权平均）
-        let total_weight = cfg.cost_weight + cfg.latency_weight + cfg.success_weight + cfg.health_weight;
-        let normalized_score = (
-            cfg.cost_weight * cost_score +
-            cfg.latency_weight * latency_score +
-            cfg.success_weight * success_score +
-            cfg.health_weight * health_score
-        ) / total_weight;
-        
+        let total_weight =
+            cfg.cost_weight + cfg.latency_weight + cfg.success_weight + cfg.health_weight;
+        let normalized_score = (cfg.cost_weight * cost_score
+            + cfg.latency_weight * latency_score
+            + cfg.success_weight * success_score
+            + cfg.health_weight * health_score)
+            / total_weight;
+
         let final_score = normalized_score + unhealthy_penalty;
-        
+
         tracing::debug!(
             provider = %provider,
             cost_score = cost_score,
@@ -315,29 +314,33 @@ impl RoutingEngine {
             final_score = final_score,
             "Provider scored"
         );
-        
+
         final_score
     }
-    
+
     /// 计算成本评分
     fn calculate_cost_score(&self, pricing: &PricingSnapshot) -> f64 {
         // 将价格转换为 f64，价格越高分数越高（越不优先）
-        let input_price: f64 = pricing.input_price_per_1k.to_string()
+        let input_price: f64 = pricing
+            .input_price_per_1k
+            .to_string()
             .parse()
             .unwrap_or(1.0);
-        let output_price: f64 = pricing.output_price_per_1k.to_string()
+        let output_price: f64 = pricing
+            .output_price_per_1k
+            .to_string()
             .parse()
             .unwrap_or(2.0);
-        
+
         // 归一化到 0-100 范围（假设价格范围 0-10）
         let avg_price = (input_price + output_price) / 2.0;
         (avg_price * 10.0).min(100.0)
     }
-    
+
     /// 计算延迟评分
     fn calculate_latency_score(&self, latency_ms: u64) -> f64 {
         let threshold = self.config.high_latency_threshold_ms;
-        
+
         if latency_ms == 0 {
             // 无延迟数据，返回中等分数
             50.0
@@ -367,7 +370,7 @@ impl RoutingEngine {
             );
             return Ok(None);
         }
-        
+
         // 检查 Provider 是否在冷却中
         if self.cooldown.is_provider_cooling(provider) {
             let remaining = self.cooldown.provider_cooldown_remaining(provider);
@@ -410,8 +413,10 @@ impl RoutingEngine {
         // 加载所有启用的账号（不按租户过滤，因为账号池是全局的）
         let accounts = Account::find_enabled_by_tenant(pool, uuid::Uuid::nil())
             .await
-            .map_err(|e| KeyComputeError::DatabaseError(format!("Failed to load accounts: {}", e)))?;
-        
+            .map_err(|e| {
+                KeyComputeError::DatabaseError(format!("Failed to load accounts: {}", e))
+            })?;
+
         // 过滤出指定 provider 的账号
         let provider_accounts: Vec<Account> = accounts
             .into_iter()
@@ -446,7 +451,7 @@ impl RoutingEngine {
             // 检查账号是否在冷却中
             let account_cooling = self.account_states.is_cooling_down(&account.id)
                 || self.cooldown.is_account_cooling(&account.id);
-            
+
             if account_cooling {
                 let remaining = self.cooldown.account_cooldown_remaining(&account.id);
                 tracing::debug!(
@@ -498,7 +503,7 @@ impl RoutingEngine {
         // 检查账号是否在冷却中
         let account_cooling = self.account_states.is_cooling_down(&account_id)
             || self.cooldown.is_account_cooling(&account_id);
-        
+
         if account_cooling {
             let remaining = self.cooldown.account_cooldown_remaining(&account_id);
             tracing::debug!(
@@ -520,42 +525,42 @@ impl RoutingEngine {
 
         Ok(Some(target))
     }
-    
+
     /// 获取 Provider 健康状态存储（只读访问）
     pub fn provider_health(&self) -> &Arc<ProviderHealthStore> {
         &self.provider_health
     }
-    
+
     /// 获取指定 Provider 的健康评分
     pub fn get_provider_health_score(&self, provider: &str) -> u64 {
         self.provider_health.get_score(provider)
     }
-    
+
     /// 检查 Provider 是否健康
     pub fn is_provider_healthy(&self, provider: &str) -> bool {
         self.provider_health.is_healthy(provider)
     }
-    
+
     /// 获取冷却管理器（只读访问）
     pub fn cooldown(&self) -> &Arc<CooldownManager> {
         &self.cooldown
     }
-    
+
     /// 检查 Provider 是否在冷却中
     pub fn is_provider_cooling(&self, provider: &str) -> bool {
         self.cooldown.is_provider_cooling(provider)
     }
-    
+
     /// 检查账号是否在冷却中
     pub fn is_account_cooling(&self, account_id: &Uuid) -> bool {
         self.cooldown.is_account_cooling(account_id)
     }
-    
+
     /// 获取 Provider 冷却剩余时间
     pub fn provider_cooldown_remaining(&self, provider: &str) -> Option<std::time::Duration> {
         self.cooldown.provider_cooldown_remaining(provider)
     }
-    
+
     /// 获取账号冷却剩余时间
     pub fn account_cooldown_remaining(&self, account_id: &Uuid) -> Option<std::time::Duration> {
         self.cooldown.account_cooldown_remaining(account_id)
@@ -565,7 +570,7 @@ impl RoutingEngine {
     pub fn configured_providers(&self) -> &[String] {
         &self.providers
     }
-    
+
     /// 获取当前健康的 Provider 列表
     pub fn healthy_providers(&self) -> Vec<String> {
         self.provider_health.healthy_providers(&self.providers)
@@ -578,17 +583,17 @@ impl RoutingEngine {
             self.providers.push(provider);
         }
     }
-    
+
     /// 移除 Provider
     pub fn remove_provider(&mut self, provider: &str) {
         self.providers.retain(|p| p != provider);
     }
-    
+
     /// 获取路由配置
     pub fn config(&self) -> &RoutingConfig {
         &self.config
     }
-    
+
     /// 更新路由配置
     pub fn set_config(&mut self, config: RoutingConfig) {
         self.config = config;
@@ -670,19 +675,19 @@ mod tests {
         let account_states = Arc::new(AccountStateStore::new());
         let provider_health = Arc::new(ProviderHealthStore::new());
         let cooldown = Arc::new(CooldownManager::new());
-        
+
         // 模拟一些请求数据
         provider_health.record_success("openai", 100);
         provider_health.record_success("openai", 150);
         provider_health.record_failure("claude");
-        
+
         let engine = RoutingEngine::new(account_states, provider_health, cooldown);
-        
+
         // 检查健康状态
         assert!(engine.is_provider_healthy("openai"));
         // claude 只有一次失败，仍然健康（成功率 0%，但没有达到 10 次阈值）
         assert!(engine.is_provider_healthy("claude"));
-        
+
         // 检查评分
         let openai_score = engine.get_provider_health_score("openai");
         assert!(openai_score > 50, "OpenAI should have good health score");
@@ -693,17 +698,17 @@ mod tests {
         let account_states = Arc::new(AccountStateStore::new());
         let provider_health = Arc::new(ProviderHealthStore::new());
         let cooldown = Arc::new(CooldownManager::new());
-        
+
         // 让 claude 多次失败变得不健康
         for _ in 0..10 {
             provider_health.record_failure("claude");
         }
-        
+
         let engine = RoutingEngine::new(account_states, provider_health, cooldown);
-        
+
         // claude 应该被标记为不健康
         assert!(!engine.is_provider_healthy("claude"));
-        
+
         // 健康列表应该不包含 claude
         let healthy = engine.healthy_providers();
         assert!(!healthy.contains(&"claude".to_string()));
@@ -719,14 +724,14 @@ mod tests {
             unhealthy_penalty: 50.0,
             high_latency_threshold_ms: 500,
         };
-        
+
         let account_states = Arc::new(AccountStateStore::new());
         let provider_health = Arc::new(ProviderHealthStore::new());
         let cooldown = Arc::new(CooldownManager::new());
         let mut engine = RoutingEngine::new(account_states, provider_health, cooldown);
-        
+
         engine.set_config(config.clone());
-        
+
         assert_eq!(engine.config().cost_weight, 0.4);
         assert_eq!(engine.config().high_latency_threshold_ms, 500);
     }
@@ -734,24 +739,24 @@ mod tests {
     #[test]
     fn test_calculate_cost_score() {
         let engine = create_test_engine();
-        
+
         let cheap_pricing = PricingSnapshot {
             model_name: "test".to_string(),
             currency: "CNY".to_string(),
             input_price_per_1k: Decimal::from(1),
             output_price_per_1k: Decimal::from(2),
         };
-        
+
         let expensive_pricing = PricingSnapshot {
             model_name: "test".to_string(),
             currency: "CNY".to_string(),
             input_price_per_1k: Decimal::from(5),
             output_price_per_1k: Decimal::from(10),
         };
-        
+
         let cheap_score = engine.calculate_cost_score(&cheap_pricing);
         let expensive_score = engine.calculate_cost_score(&expensive_pricing);
-        
+
         // 贵的应该分数更高（越不优先）
         assert!(expensive_score > cheap_score);
     }
@@ -759,7 +764,7 @@ mod tests {
     #[test]
     fn test_calculate_latency_score() {
         let engine = create_test_engine();
-        
+
         assert!(engine.calculate_latency_score(50) < engine.calculate_latency_score(200));
         assert!(engine.calculate_latency_score(200) < engine.calculate_latency_score(500));
         assert!(engine.calculate_latency_score(500) < engine.calculate_latency_score(1500));
@@ -770,24 +775,24 @@ mod tests {
         let account_states = Arc::new(AccountStateStore::new());
         let provider_health = Arc::new(ProviderHealthStore::new());
         let cooldown = Arc::new(CooldownManager::new());
-        
+
         let engine = RoutingEngine::new(account_states, provider_health, cooldown.clone());
-        
+
         // 初始状态不应该在冷却中
         assert!(!engine.is_provider_cooling("openai"));
         assert!(!engine.is_account_cooling(&Uuid::new_v4()));
-        
+
         // 设置 Provider 冷却
         cooldown.set_provider_cooldown(
             "openai",
             Some(std::time::Duration::from_secs(60)),
             keycompute_runtime::CooldownReason::ConsecutiveErrors,
         );
-        
+
         // 现在应该在冷却中
         assert!(engine.is_provider_cooling("openai"));
         assert!(engine.provider_cooldown_remaining("openai").is_some());
-        
+
         // 其他 Provider 不应该受影响
         assert!(!engine.is_provider_cooling("claude"));
     }
@@ -797,19 +802,19 @@ mod tests {
         let account_states = Arc::new(AccountStateStore::new());
         let provider_health = Arc::new(ProviderHealthStore::new());
         let cooldown = Arc::new(CooldownManager::new());
-        
+
         let engine = RoutingEngine::new(account_states, provider_health, cooldown.clone());
-        
+
         // 设置 openai 冷却
         cooldown.set_provider_cooldown(
             "openai",
             Some(std::time::Duration::from_secs(60)),
             keycompute_runtime::CooldownReason::CircuitBreaker,
         );
-        
+
         // openai 应该在冷却中
         assert!(engine.is_provider_cooling("openai"));
-        
+
         // claude 和 deepseek 不应该在冷却中
         assert!(!engine.is_provider_cooling("claude"));
         assert!(!engine.is_provider_cooling("deepseek"));
@@ -820,21 +825,21 @@ mod tests {
         let account_states = Arc::new(AccountStateStore::new());
         let provider_health = Arc::new(ProviderHealthStore::new());
         let cooldown = Arc::new(CooldownManager::new());
-        
+
         let engine = RoutingEngine::new(account_states, provider_health, cooldown.clone());
-        
+
         let account_id = Uuid::new_v4();
-        
+
         // 初始状态
         assert!(!engine.is_account_cooling(&account_id));
-        
+
         // 设置账号冷却
         cooldown.set_account_cooldown(
             account_id,
             Some(std::time::Duration::from_secs(30)),
             keycompute_runtime::CooldownReason::RpmLimitExceeded,
         );
-        
+
         // 现在应该在冷却中
         assert!(engine.is_account_cooling(&account_id));
         assert!(engine.account_cooldown_remaining(&account_id).is_some());

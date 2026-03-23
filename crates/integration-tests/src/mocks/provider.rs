@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use futures::stream;
-use keycompute_provider_trait::{ProviderAdapter, StreamEvent, StreamBox, UpstreamRequest};
+use keycompute_provider_trait::{ProviderAdapter, StreamBox, StreamEvent, UpstreamRequest};
 use keycompute_types::KeyComputeError;
 use std::sync::Mutex;
 
@@ -68,7 +68,6 @@ impl ProviderAdapter for MockProvider {
     }
 
     async fn stream_chat(&self, _request: UpstreamRequest) -> keycompute_types::Result<StreamBox> {
-        
         if self.should_fail {
             return Err(KeyComputeError::ProviderError("Mock failure".to_string()));
         }
@@ -102,7 +101,7 @@ impl ProviderAdapter for MockProvider {
                     content,
                     finish_reason: None,
                 };
-                
+
                 Some((Ok(event), (chunks, index + 1, input, output)))
             },
         );
@@ -153,13 +152,10 @@ mod tests {
     #[tokio::test]
     async fn test_mock_provider_stream() {
         let provider = MockProviderFactory::create_openai();
-        let request = UpstreamRequest::new(
-            "http://test",
-            "test-key",
-            "gpt-4o",
-        );
+        let request = UpstreamRequest::new("http://test", "test-key", "gpt-4o");
 
-        let mut stream: keycompute_provider_trait::StreamBox = provider.stream_chat(request).await.unwrap();
+        let mut stream: keycompute_provider_trait::StreamBox =
+            provider.stream_chat(request).await.unwrap();
         let mut events = Vec::new();
 
         while let Some(event) = stream.next().await {
@@ -173,13 +169,10 @@ mod tests {
     #[tokio::test]
     async fn test_mock_provider_failure() {
         let provider = MockProviderFactory::create_failing();
-        let request = UpstreamRequest::new(
-            "http://test",
-            "test-key",
-            "gpt-4o",
-        );
+        let request = UpstreamRequest::new("http://test", "test-key", "gpt-4o");
 
-        let result: Result<keycompute_provider_trait::StreamBox, _> = provider.stream_chat(request).await;
+        let result: Result<keycompute_provider_trait::StreamBox, _> =
+            provider.stream_chat(request).await;
         assert!(result.is_err());
     }
 }

@@ -20,9 +20,7 @@ impl Default for FailoverManager {
 impl FailoverManager {
     /// 创建新的故障转移管理器
     pub fn new() -> Self {
-        Self {
-            max_fallbacks: 3,
-        }
+        Self { max_fallbacks: 3 }
     }
 
     /// 创建带配置的管理器
@@ -31,7 +29,11 @@ impl FailoverManager {
     }
 
     /// 选择下一个 fallback target
-    pub fn select_next<'a>(&self, targets: &'a [ExecutionTarget], current_index: usize) -> Option<&'a ExecutionTarget> {
+    pub fn select_next<'a>(
+        &self,
+        targets: &'a [ExecutionTarget],
+        current_index: usize,
+    ) -> Option<&'a ExecutionTarget> {
         if current_index + 1 >= targets.len() {
             return None;
         }

@@ -4,12 +4,12 @@
 //! 架构约束：Billing 完成后触发，不修改主账单，不影响执行链路。
 
 pub mod calculator;
-pub mod rule;
 pub mod records;
+pub mod rule;
 
-pub use calculator::{calculate_shares, DistributionShare};
-pub use rule::{DistributionRule, RuleEngine};
+pub use calculator::{DistributionShare, calculate_shares};
 pub use records::{DistributionRecord, DistributionService};
+pub use rule::{DistributionRule, RuleEngine};
 
 use rust_decimal::Decimal;
 use uuid::Uuid;
@@ -96,8 +96,14 @@ mod tests {
         assert_eq!(DistributionLevel::Level1.as_str(), "level1");
         assert_eq!(DistributionLevel::Level2.as_str(), "level2");
 
-        assert_eq!(DistributionLevel::from_str("level1"), Some(DistributionLevel::Level1));
-        assert_eq!(DistributionLevel::from_str("level2"), Some(DistributionLevel::Level2));
+        assert_eq!(
+            DistributionLevel::from_str("level1"),
+            Some(DistributionLevel::Level1)
+        );
+        assert_eq!(
+            DistributionLevel::from_str("level2"),
+            Some(DistributionLevel::Level2)
+        );
         assert_eq!(DistributionLevel::from_str("level3"), None);
     }
 }
