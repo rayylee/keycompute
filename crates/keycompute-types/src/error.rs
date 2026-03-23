@@ -15,6 +15,9 @@ pub enum KeyComputeError {
     ProviderError(String),
 
     #[error("database error: {0}")]
+    DatabaseError(String),
+
+    #[error("database error: {0}")]
     DbError(String),
 
     #[error("internal error: {0}")]

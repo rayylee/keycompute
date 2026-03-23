@@ -13,6 +13,8 @@ use uuid::Uuid;
 pub struct AccountState {
     /// 连续错误计数
     pub error_count: u32,
+    /// 总请求数
+    pub total_requests: u32,
     /// 最后一次错误时间
     pub last_error_at: Option<Instant>,
     /// 冷却直到时间
@@ -27,6 +29,7 @@ impl Default for AccountState {
     fn default() -> Self {
         Self {
             error_count: 0,
+            total_requests: 0,
             last_error_at: None,
             cooldown_until: None,
             current_rpm: 0,
@@ -184,6 +187,14 @@ impl AccountStateStore {
             .get(account_id)
             .map(|s| s.is_cooling_down())
             .unwrap_or(false)
+    }
+
+    /// Routing 调用：获取账号状态
+    pub fn get(&self, account_id: &Uuid) -> AccountState {
+        self.states
+            .get(account_id)
+            .map(|s| s.clone())
+            .unwrap_or_default()
     }
 
     /// Routing 调用：获取所有可用账号（未冷却）

@@ -17,6 +17,8 @@ pub enum Permission {
     ManageTenant,
     /// 查看账单
     ViewBilling,
+    /// 管理账单
+    ManageBilling,
     /// 管理定价
     ManagePricing,
     /// 管理 Provider 账号
@@ -35,6 +37,7 @@ impl Permission {
             Permission::ManageUsers => "users:manage",
             Permission::ManageTenant => "tenant:manage",
             Permission::ViewBilling => "billing:view",
+            Permission::ManageBilling => "billing:manage",
             Permission::ManagePricing => "pricing:manage",
             Permission::ManageProviders => "providers:manage",
             Permission::SystemAdmin => "system:admin",
@@ -50,6 +53,7 @@ impl Permission {
             "users:manage" => Some(Permission::ManageUsers),
             "tenant:manage" => Some(Permission::ManageTenant),
             "billing:view" => Some(Permission::ViewBilling),
+            "billing:manage" => Some(Permission::ManageBilling),
             "pricing:manage" => Some(Permission::ManagePricing),
             "providers:manage" => Some(Permission::ManageProviders),
             "system:admin" => Some(Permission::SystemAdmin),

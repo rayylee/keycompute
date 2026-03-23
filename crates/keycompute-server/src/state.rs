@@ -8,12 +8,15 @@ use keycompute_provider_trait::ProviderAdapter;
 use keycompute_runtime::{AccountStateStore, CooldownManager, ProviderHealthStore};
 use keycompute_routing::RoutingEngine;
 use llm_gateway::{GatewayBuilder, GatewayExecutor};
+use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 /// 应用状态
 #[derive(Clone)]
 pub struct AppState {
+    /// 数据库连接池（可选）
+    pub pool: Option<Arc<PgPool>>,
     /// 认证服务
     pub auth: Arc<AuthService>,
     /// 限流服务
@@ -37,6 +40,7 @@ pub struct AppState {
 impl std::fmt::Debug for AppState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppState")
+            .field("pool", &self.pool.as_ref().map(|_| "PgPool"))
             .field("auth", &"<AuthService>")
             .field("rate_limiter", &"<RateLimitService>")
             .field("pricing", &"<PricingService>")
@@ -51,7 +55,7 @@ impl std::fmt::Debug for AppState {
 }
 
 impl AppState {
-    /// 创建新的应用状态
+    /// 创建新的应用状态（无数据库连接）
     pub fn new() -> Self {
         // 创建 API Key 验证器
         let api_key_validator = ApiKeyValidator::new("default-secret");
@@ -76,7 +80,6 @@ impl AppState {
         let gateway = Arc::new(
             GatewayBuilder::new()
                 .add_provider("openai", Arc::new(keycompute_openai::OpenAIProvider::new()))
-                // TODO: 添加更多 Provider（deepseek, claude, gemini 等）
                 .build(),
         );
 
@@ -84,6 +87,53 @@ impl AppState {
         let billing = Arc::new(BillingService::new());
 
         Self {
+            pool: None,
+            auth: Arc::new(auth_service),
+            rate_limiter: Arc::new(keycompute_ratelimit::RateLimitService::default_memory()),
+            pricing: Arc::new(pricing_service),
+            account_states: Arc::clone(&account_states),
+            provider_health,
+            cooldown,
+            routing: routing_engine,
+            gateway,
+            billing,
+        }
+    }
+
+    /// 创建带数据库连接的应用状态
+    pub fn with_pool(pool: Arc<PgPool>) -> Self {
+        // 创建带数据库连接的 API Key 验证器
+        let api_key_validator = ApiKeyValidator::with_pool(Arc::clone(&pool));
+        let auth_service = AuthService::new(api_key_validator);
+
+        // 创建带数据库连接的定价服务
+        let pricing_service = keycompute_pricing::PricingService::with_pool(Arc::clone(&pool));
+
+        // 创建运行时状态存储
+        let account_states = Arc::new(AccountStateStore::new());
+        let provider_health = Arc::new(ProviderHealthStore::new());
+        let cooldown = Arc::new(CooldownManager::new());
+
+        // 创建带数据库连接的路由引擎
+        let routing_engine = Arc::new(RoutingEngine::with_pool(
+            Arc::clone(&account_states),
+            Arc::clone(&provider_health),
+            Arc::clone(&cooldown),
+            Arc::clone(&pool),
+        ));
+
+        // 创建 Gateway 执行器
+        let gateway = Arc::new(
+            GatewayBuilder::new()
+                .add_provider("openai", Arc::new(keycompute_openai::OpenAIProvider::new()))
+                .build(),
+        );
+
+        // 创建带数据库连接的计费服务
+        let billing = Arc::new(BillingService::with_pool(Arc::clone(&pool)));
+
+        Self {
+            pool: Some(pool),
             auth: Arc::new(auth_service),
             rate_limiter: Arc::new(keycompute_ratelimit::RateLimitService::default_memory()),
             pricing: Arc::new(pricing_service),
@@ -128,6 +178,7 @@ impl AppState {
         let billing = Arc::new(BillingService::new());
 
         Self {
+            pool: None,
             auth: Arc::new(auth_service),
             rate_limiter: Arc::new(keycompute_ratelimit::RateLimitService::default_memory()),
             pricing: Arc::new(pricing_service),

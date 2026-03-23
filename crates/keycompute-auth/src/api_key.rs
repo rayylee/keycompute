@@ -3,23 +3,46 @@
 //! 处理 API Key 的验证和解析。
 
 use keycompute_types::{KeyComputeError, Result};
+use keycompute_db::{ApiKey, User};
 use sha2::{Digest, Sha256};
+use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{AuthContext, Permission};
 
 /// API Key 验证器
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ApiKeyValidator {
-    /// 密钥（实际应该从数据库或配置加载）
+    /// 数据库连接池（可选）
+    pool: Option<Arc<PgPool>>,
+    /// 密钥（用于无数据库时的回退验证）
     secret: String,
 }
 
+impl std::fmt::Debug for ApiKeyValidator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ApiKeyValidator")
+            .field("pool", &self.pool.as_ref().map(|_| "PgPool"))
+            .field("secret", &"***")
+            .finish()
+    }
+}
+
 impl ApiKeyValidator {
-    /// 创建新的 API Key 验证器
+    /// 创建新的 API Key 验证器（无数据库连接）
     pub fn new(secret: impl Into<String>) -> Self {
         Self {
+            pool: None,
             secret: secret.into(),
+        }
+    }
+
+    /// 创建带数据库连接的验证器
+    pub fn with_pool(pool: Arc<PgPool>) -> Self {
+        Self {
+            pool: Some(pool),
+            secret: String::new(),
         }
     }
 
@@ -37,12 +60,90 @@ impl ApiKeyValidator {
         // 计算 key 的 hash
         let key_hash = Self::hash_key(key);
 
-        // TODO: 从数据库查询 API Key
-        // 这里简化处理，直接返回模拟数据
-        tracing::debug!(key_hash = %key_hash, "Validating API key");
+        // 尝试从数据库验证
+        if let Some(pool) = &self.pool {
+            return self.validate_from_database(pool, &key_hash).await;
+        }
+
+        // 无数据库连接，使用回退逻辑
+        self.validate_fallback(&key_hash).await
+    }
+
+    /// 从数据库验证 API Key
+    async fn validate_from_database(
+        &self,
+        pool: &PgPool,
+        key_hash: &str,
+    ) -> Result<AuthContext> {
+        // 查询 API Key
+        let api_key = ApiKey::find_by_hash(pool, key_hash)
+            .await
+            .map_err(|e| KeyComputeError::DatabaseError(format!("Failed to query API key: {}", e)))?;
+
+        let Some(api_key) = api_key else {
+            tracing::warn!(key_hash = %key_hash, "API key not found");
+            return Err(KeyComputeError::AuthError("Invalid API key".into()));
+        };
+
+        // 检查是否有效
+        if !api_key.is_valid() {
+            tracing::warn!(
+                api_key_id = %api_key.id,
+                revoked = api_key.revoked,
+                "API key is not valid"
+            );
+            return Err(KeyComputeError::AuthError(
+                "API key is revoked or expired".into(),
+            ));
+        }
+
+        // 查询用户信息
+        let user = User::find_by_id(pool, api_key.user_id)
+            .await
+            .map_err(|e| KeyComputeError::DatabaseError(format!("Failed to query user: {}", e)))?;
+
+        let Some(user) = user else {
+            tracing::warn!(user_id = %api_key.user_id, "User not found");
+            return Err(KeyComputeError::AuthError("User not found".into()));
+        };
+
+        // 更新最后使用时间
+        let _ = api_key.update_last_used(pool).await;
+
+        tracing::info!(
+            user_id = %user.id,
+            tenant_id = %user.tenant_id,
+            api_key_id = %api_key.id,
+            "API key validated successfully"
+        );
+
+        // 构建权限列表
+        let permissions = match user.role.as_str() {
+            "admin" => vec![
+                Permission::UseApi,
+                Permission::ManageUsers,
+                Permission::ManageApiKeys,
+                Permission::ViewBilling,
+                Permission::ManageBilling,
+            ],
+            "user" => vec![Permission::UseApi, Permission::ViewBilling],
+            _ => vec![Permission::UseApi],
+        };
+
+        Ok(AuthContext {
+            user_id: user.id,
+            tenant_id: user.tenant_id,
+            api_key_id: api_key.id,
+            role: user.role,
+            permissions,
+        })
+    }
+
+    /// 回退验证（无数据库时使用）
+    async fn validate_fallback(&self, key_hash: &str) -> Result<AuthContext> {
+        tracing::debug!(key_hash = %key_hash, "Validating API key (fallback mode)");
 
         // 模拟验证成功
-        // 实际应该查询数据库验证 key_hash 并获取用户信息
         let user_id = Uuid::new_v4();
         let tenant_id = Uuid::new_v4();
         let api_key_id = Uuid::new_v4();

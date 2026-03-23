@@ -5,18 +5,37 @@
 use crate::calculator::calculate_amount;
 use crate::usage_source::UsageSource;
 use keycompute_types::{KeyComputeError, RequestContext, Result};
+use keycompute_db::{CreateUsageLogRequest, UsageLog};
 use rust_decimal::Decimal;
+use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
 /// 计费服务
-#[derive(Debug, Clone)]
-pub struct BillingService;
+#[derive(Clone)]
+pub struct BillingService {
+    /// 数据库连接池（可选）
+    pool: Option<Arc<PgPool>>,
+}
+
+impl std::fmt::Debug for BillingService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BillingService")
+            .field("pool", &self.pool.as_ref().map(|_| "PgPool"))
+            .finish()
+    }
+}
 
 impl BillingService {
-    /// 创建新的计费服务
+    /// 创建新的计费服务（无数据库连接）
     pub fn new() -> Self {
-        Self
+        Self { pool: None }
+    }
+
+    /// 创建带数据库连接的计费服务
+    pub fn with_pool(pool: Arc<PgPool>) -> Self {
+        Self { pool: Some(pool) }
     }
 
     /// 流结束后执行结算
@@ -73,6 +92,81 @@ impl BillingService {
         );
 
         Ok(log)
+    }
+
+    /// 流结束后执行结算并写入数据库
+    ///
+    /// 输入: usage + pricing_snapshot + request metadata
+    /// 输出: 写入数据库后的 UsageLog
+    pub async fn finalize_and_save(
+        &self,
+        ctx: &RequestContext,
+        provider_name: &str,
+        account_id: Uuid,
+        status: &str,
+    ) -> Result<UsageLog> {
+        // 先执行结算
+        let new_log = self.finalize(ctx, provider_name, account_id, status).await?;
+
+        // 写入数据库
+        let Some(pool) = &self.pool else {
+            // 无数据库连接，返回模拟的 UsageLog
+            return Ok(UsageLog {
+                id: Uuid::new_v4(),
+                request_id: new_log.request_id,
+                tenant_id: new_log.tenant_id,
+                user_id: new_log.user_id,
+                api_key_id: new_log.api_key_id,
+                model_name: new_log.model_name,
+                provider_name: new_log.provider_name,
+                account_id: new_log.account_id,
+                input_tokens: new_log.input_tokens,
+                output_tokens: new_log.output_tokens,
+                total_tokens: new_log.total_tokens,
+                input_unit_price_snapshot: decimal_to_bigdecimal(&new_log.input_unit_price_snapshot),
+                output_unit_price_snapshot: decimal_to_bigdecimal(&new_log.output_unit_price_snapshot),
+                user_amount: decimal_to_bigdecimal(&new_log.user_amount),
+                currency: new_log.currency,
+                usage_source: new_log.usage_source,
+                status: new_log.status,
+                started_at: new_log.started_at,
+                finished_at: new_log.finished_at,
+                created_at: Utc::now(),
+            });
+        };
+
+        let create_req = CreateUsageLogRequest {
+            request_id: new_log.request_id,
+            tenant_id: new_log.tenant_id,
+            user_id: new_log.user_id,
+            api_key_id: new_log.api_key_id,
+            model_name: new_log.model_name,
+            provider_name: new_log.provider_name,
+            account_id: new_log.account_id,
+            input_tokens: new_log.input_tokens,
+            output_tokens: new_log.output_tokens,
+            input_unit_price_snapshot: decimal_to_bigdecimal(&new_log.input_unit_price_snapshot),
+            output_unit_price_snapshot: decimal_to_bigdecimal(&new_log.output_unit_price_snapshot),
+            user_amount: decimal_to_bigdecimal(&new_log.user_amount),
+            currency: new_log.currency,
+            usage_source: new_log.usage_source,
+            status: new_log.status,
+            started_at: new_log.started_at,
+            finished_at: new_log.finished_at,
+        };
+
+        let saved_log = UsageLog::create(pool, &create_req)
+            .await
+            .map_err(|e| KeyComputeError::DatabaseError(format!("Failed to save usage log: {}", e)))?;
+
+        tracing::info!(
+            request_id = %ctx.request_id,
+            usage_log_id = %saved_log.id,
+            user_amount = %saved_log.user_amount,
+            "Usage log saved to database"
+        );
+
+        Ok(saved_log)
     }
 }
 
@@ -354,4 +448,11 @@ mod tests {
         // 1000/1000*1 + 500/1000*2 = 1 + 1 = 2
         assert_eq!(log.user_amount, Decimal::from(2));
     }
+}
+
+/// 将 Decimal 转换为 BigDecimal
+fn decimal_to_bigdecimal(value: &Decimal) -> bigdecimal::BigDecimal {
+    // Decimal -> String -> BigDecimal
+    let s = value.to_string();
+    s.parse().unwrap_or(bigdecimal::BigDecimal::from(0))
 }

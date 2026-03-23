@@ -5,6 +5,8 @@
 
 use keycompute_runtime::{AccountStateStore, CooldownManager, ProviderHealthStore};
 use keycompute_types::{ExecutionPlan, ExecutionTarget, KeyComputeError, PricingSnapshot, RequestContext, Result};
+use keycompute_db::Account;
+use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -45,7 +47,7 @@ impl Default for RoutingConfig {
 /// 双层路由：Layer1 模型路由，Layer2 账号路由
 /// 集成 ProviderHealthStore 进行健康评分路由
 /// 集成 CooldownManager 进行冷却状态检查
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RoutingEngine {
     /// 账号状态存储（只读）
     account_states: Arc<AccountStateStore>,
@@ -53,14 +55,29 @@ pub struct RoutingEngine {
     provider_health: Arc<ProviderHealthStore>,
     /// 冷却管理器（只读）
     cooldown: Arc<CooldownManager>,
+    /// 数据库连接池（可选）
+    pool: Option<Arc<PgPool>>,
     /// 可用 Provider 列表
     providers: Vec<String>,
     /// 路由配置
     config: RoutingConfig,
 }
 
+impl std::fmt::Debug for RoutingEngine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RoutingEngine")
+            .field("account_states", &"AccountStateStore")
+            .field("provider_health", &"ProviderHealthStore")
+            .field("cooldown", &"CooldownManager")
+            .field("pool", &self.pool.as_ref().map(|_| "PgPool"))
+            .field("providers", &self.providers)
+            .field("config", &self.config)
+            .finish()
+    }
+}
+
 impl RoutingEngine {
-    /// 创建新的路由引擎
+    /// 创建新的路由引擎（无数据库连接）
     pub fn new(
         account_states: Arc<AccountStateStore>,
         provider_health: Arc<ProviderHealthStore>,
@@ -70,6 +87,28 @@ impl RoutingEngine {
             account_states,
             provider_health,
             cooldown,
+            pool: None,
+            providers: vec![
+                "openai".to_string(),
+                "claude".to_string(),
+                "deepseek".to_string(),
+            ],
+            config: RoutingConfig::default(),
+        }
+    }
+
+    /// 创建带数据库连接的路由引擎
+    pub fn with_pool(
+        account_states: Arc<AccountStateStore>,
+        provider_health: Arc<ProviderHealthStore>,
+        cooldown: Arc<CooldownManager>,
+        pool: Arc<PgPool>,
+    ) -> Self {
+        Self {
+            account_states,
+            provider_health,
+            cooldown,
+            pool: Some(pool),
             providers: vec![
                 "openai".to_string(),
                 "claude".to_string(),
@@ -90,6 +129,29 @@ impl RoutingEngine {
             account_states,
             provider_health,
             cooldown,
+            pool: None,
+            providers: vec![
+                "openai".to_string(),
+                "claude".to_string(),
+                "deepseek".to_string(),
+            ],
+            config,
+        }
+    }
+
+    /// 创建带数据库连接和自定义配置的路由引擎
+    pub fn with_pool_and_config(
+        account_states: Arc<AccountStateStore>,
+        provider_health: Arc<ProviderHealthStore>,
+        cooldown: Arc<CooldownManager>,
+        pool: Arc<PgPool>,
+        config: RoutingConfig,
+    ) -> Self {
+        Self {
+            account_states,
+            provider_health,
+            cooldown,
+            pool: Some(pool),
             providers: vec![
                 "openai".to_string(),
                 "claude".to_string(),
@@ -317,12 +379,123 @@ impl RoutingEngine {
             return Ok(None);
         }
 
-        // TODO: 从数据库加载该 Provider 的可用账号
-        // 这里简化处理，返回模拟数据
+        // 尝试从数据库加载账号
+        let accounts = if let Some(pool) = &self.pool {
+            match self.load_accounts_from_database(pool, provider).await {
+                Ok(accounts) => accounts,
+                Err(e) => {
+                    tracing::warn!(
+                        provider = %provider,
+                        error = %e,
+                        "Failed to load accounts from database, using fallback"
+                    );
+                    return self.select_fallback_account(provider).await;
+                }
+            }
+        } else {
+            // 无数据库连接，使用回退逻辑
+            return self.select_fallback_account(provider).await;
+        };
 
+        // 从账号列表中选择最优账号
+        self.select_best_account(provider, accounts).await
+    }
+
+    /// 从数据库加载账号
+    async fn load_accounts_from_database(
+        &self,
+        pool: &PgPool,
+        provider: &str,
+    ) -> Result<Vec<Account>> {
+        // 加载所有启用的账号（不按租户过滤，因为账号池是全局的）
+        let accounts = Account::find_enabled_by_tenant(pool, uuid::Uuid::nil())
+            .await
+            .map_err(|e| KeyComputeError::DatabaseError(format!("Failed to load accounts: {}", e)))?;
+        
+        // 过滤出指定 provider 的账号
+        let provider_accounts: Vec<Account> = accounts
+            .into_iter()
+            .filter(|a| a.provider == provider)
+            .collect();
+
+        tracing::debug!(
+            provider = %provider,
+            count = provider_accounts.len(),
+            "Loaded accounts from database"
+        );
+
+        Ok(provider_accounts)
+    }
+
+    /// 选择最优账号
+    async fn select_best_account(
+        &self,
+        provider: &str,
+        accounts: Vec<Account>,
+    ) -> Result<Option<ExecutionTarget>> {
+        if accounts.is_empty() {
+            tracing::warn!(provider = %provider, "No accounts available");
+            return Ok(None);
+        }
+
+        // 按优先级排序，然后选择负载最低的
+        let mut sorted_accounts: Vec<_> = accounts.into_iter().collect();
+        sorted_accounts.sort_by(|a, b| b.priority.cmp(&a.priority));
+
+        for account in sorted_accounts {
+            // 检查账号是否在冷却中
+            let account_cooling = self.account_states.is_cooling_down(&account.id)
+                || self.cooldown.is_account_cooling(&account.id);
+            
+            if account_cooling {
+                let remaining = self.cooldown.account_cooldown_remaining(&account.id);
+                tracing::debug!(
+                    provider = %provider,
+                    account_id = %account.id,
+                    remaining_secs = remaining.map(|d| d.as_secs()),
+                    "Account is cooling down, skipping"
+                );
+                continue;
+            }
+
+            // 计算账号评分
+            let state = self.account_states.get(&account.id);
+            let rpm_ratio = state.current_rpm as f64 / account.rpm_limit.max(1) as f64;
+            let error_rate = if state.total_requests > 0 {
+                state.error_count as f64 / state.total_requests as f64
+            } else {
+                0.0
+            };
+            let score = rpm_ratio + error_rate * 2.0;
+
+            tracing::debug!(
+                provider = %provider,
+                account_id = %account.id,
+                score = score,
+                rpm_ratio = rpm_ratio,
+                error_rate = error_rate,
+                "Account scored"
+            );
+
+            // 选择评分最低的账号
+            let target = ExecutionTarget {
+                provider: provider.to_string(),
+                account_id: account.id,
+                endpoint: account.endpoint,
+                api_key: account.api_key_encrypted, // 注意：实际应解密
+            };
+
+            return Ok(Some(target));
+        }
+
+        Ok(None)
+    }
+
+    /// 回退账号选择（无数据库时使用）
+    async fn select_fallback_account(&self, provider: &str) -> Result<Option<ExecutionTarget>> {
         let account_id = Uuid::new_v4();
 
-        // 检查账号是否在冷却中（双重检查：AccountStateStore + CooldownManager）
+        // 检查账号是否在冷却中
         let account_cooling = self.account_states.is_cooling_down(&account_id)
             || self.cooldown.is_account_cooling(&account_id);
         

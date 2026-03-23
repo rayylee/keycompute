@@ -151,9 +151,13 @@ pub async fn chat_completions(
         .await
         .map_err(|e| crate::error::ApiError::Internal(format!("Routing failed: {}", e)))?;
 
+    // 保存 primary provider 和 account 信息用于计费
+    let primary_provider = plan.primary.provider.clone();
+    let primary_account_id = plan.primary.account_id;
+
     tracing::info!(
         request_id = %request_id.0,
-        primary_provider = %plan.primary.provider,
+        primary_provider = %primary_provider,
         fallback_count = plan.fallback_chain.len(),
         "Routing decision made"
     );
@@ -161,12 +165,19 @@ pub async fn chat_completions(
     // 4. 执行（唯一执行层）- 通过 GatewayExecutor
     let rx = state
         .gateway
-        .execute(ctx, plan, Arc::clone(&state.account_states))
+        .execute(Arc::clone(&ctx), plan, Arc::clone(&state.account_states))
         .await
         .map_err(|e| crate::error::ApiError::Internal(format!("Execution failed: {}", e)))?;
 
-    // 5. 返回 SSE 流
-    let stream = create_gateway_stream(rx);
+    // 5. 返回 SSE 流（带计费触发）
+    let billing = Arc::clone(&state.billing);
+    let stream = create_gateway_stream_with_billing(
+        rx,
+        ctx,
+        primary_provider,
+        primary_account_id,
+        billing,
+    );
 
     Ok(Sse::new(stream))
 }
@@ -347,6 +358,72 @@ fn create_gateway_stream(
                 }
                 _ => {}
             }
+        }
+    }
+}
+
+/// 将 Gateway 的 StreamEvent 转换为 Axum SSE Event（带计费触发）
+fn create_gateway_stream_with_billing(
+    mut rx: tokio::sync::mpsc::Receiver<keycompute_provider_trait::StreamEvent>,
+    ctx: Arc<RequestContext>,
+    provider_name: String,
+    account_id: uuid::Uuid,
+    billing: Arc<keycompute_billing::BillingService>,
+) -> impl Stream<Item = std::result::Result<Event, Infallible>> {
+    use futures::stream::StreamExt;
+
+    async_stream::stream! {
+        let mut status = "success".to_string();
+
+        while let Some(event) = rx.recv().await {
+            match event {
+                keycompute_provider_trait::StreamEvent::Delta { content, finish_reason } => {
+                    let chunk = StreamChunk {
+                        id: format!("chatcmpl-{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("")),
+                        object: "chat.completion.chunk".to_string(),
+                        created: chrono::Utc::now().timestamp(),
+                        model: ctx.model.clone(),
+                        choices: vec![StreamChoice {
+                            index: 0,
+                            delta: DeltaContent {
+                                role: if finish_reason.is_none() { Some("assistant".to_string()) } else { None },
+                                content: Some(content),
+                            },
+                            finish_reason,
+                        }],
+                    };
+                    let data = serde_json::to_string(&chunk).unwrap();
+                    yield Ok(Event::default().data(data));
+                }
+                keycompute_provider_trait::StreamEvent::Done => {
+                    // 流正常结束，触发计费
+                    let _ = billing.finalize_and_save(&ctx, &provider_name, account_id, &status).await;
+                    yield Ok(Event::default().data("[DONE]"));
+                    break;
+                }
+                keycompute_provider_trait::StreamEvent::Error { message } => {
+                    // 流出错，标记状态并触发计费
+                    status = "error".to_string();
+                    let _ = billing.finalize_and_save(&ctx, &provider_name, account_id, &status).await;
+
+                    let error_chunk = serde_json::json!({
+                        "error": { "message": message }
+                    });
+                    yield Ok(Event::default().data(error_chunk.to_string()));
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        // 如果流意外结束（没有 Done 或 Error 事件），也触发计费
+        if status == "success" {
+            tracing::warn!(
+                request_id = %ctx.request_id,
+                "Stream ended without Done/Error event, triggering billing"
+            );
+            status = "incomplete".to_string();
+            let _ = billing.finalize_and_save(&ctx, &provider_name, account_id, &status).await;
         }
     }
 }

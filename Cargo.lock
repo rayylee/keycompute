@@ -3114,6 +3114,7 @@ dependencies = [
  "keycompute-db",
  "keycompute-types",
  "sha2",
+ "sqlx",
  "tokio",
  "tracing",
  "uuid",
@@ -3124,10 +3125,12 @@ name = "keycompute-billing"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "bigdecimal",
  "chrono",
  "keycompute-db",
  "keycompute-types",
  "rust_decimal",
+ "sqlx",
  "tokio",
  "tracing",
  "uuid",
@@ -3224,9 +3227,11 @@ name = "keycompute-pricing"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "bigdecimal",
  "keycompute-db",
  "keycompute-types",
  "rust_decimal",
+ "sqlx",
  "tokio",
  "tracing",
  "uuid",
@@ -3261,9 +3266,11 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "keycompute-db",
  "keycompute-runtime",
  "keycompute-types",
  "rust_decimal",
+ "sqlx",
  "tokio",
  "tracing",
  "uuid",
@@ -3306,6 +3313,7 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
+ "sqlx",
  "tokio",
  "tokio-stream",
  "tokio-test",
