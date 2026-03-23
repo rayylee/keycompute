@@ -167,7 +167,12 @@ pub async fn chat_completions(
     // 4. 执行（唯一执行层）- 通过 GatewayExecutor
     let rx = state
         .gateway
-        .execute(Arc::clone(&ctx), plan, Arc::clone(&state.account_states))
+        .execute(
+            Arc::clone(&ctx),
+            plan,
+            Arc::clone(&state.account_states),
+            Some(Arc::clone(&state.provider_health)),
+        )
         .await
         .map_err(|e| crate::error::ApiError::Internal(format!("Execution failed: {}", e)))?;
 
