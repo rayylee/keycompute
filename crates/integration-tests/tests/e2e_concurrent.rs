@@ -18,8 +18,8 @@ use keycompute_routing::RoutingEngine;
 use keycompute_runtime::{AccountStateStore, CooldownManager, CooldownReason, ProviderHealthStore};
 use keycompute_types::{PricingSnapshot, RequestContext};
 use rust_decimal::Decimal;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tokio::task::JoinSet;
 use uuid::Uuid;
@@ -72,7 +72,10 @@ async fn test_concurrent_routing_requests() {
     chain.add_step(
         "keycompute-routing",
         "RoutingEngine::shared",
-        format!("Shared engine created for {} concurrent requests", concurrent_requests),
+        format!(
+            "Shared engine created for {} concurrent requests",
+            concurrent_requests
+        ),
         true,
     );
 
@@ -377,7 +380,10 @@ async fn test_concurrent_provider_requests() {
     chain.add_step(
         "integration-tests::mocks",
         "MockProvider::shared",
-        format!("Shared provider for {} concurrent requests", concurrent_requests),
+        format!(
+            "Shared provider for {} concurrent requests",
+            concurrent_requests
+        ),
         true,
     );
 
@@ -427,7 +433,10 @@ async fn test_concurrent_provider_requests() {
     chain.add_step(
         "keycompute-provider-trait",
         "ConcurrentProvider::success_rate",
-        format!("Success: {}/{}, Errors: {}", success, concurrent_requests, errors),
+        format!(
+            "Success: {}/{}, Errors: {}",
+            success, concurrent_requests, errors
+        ),
         success == concurrent_requests as u64,
     );
 
@@ -632,7 +641,9 @@ async fn test_concurrent_cooldown_expiry() {
     let providers = 20;
 
     // 1. 创建短时间冷却管理器
-    let cooldown = Arc::new(CooldownManager::with_default_duration(Duration::from_millis(50)));
+    let cooldown = Arc::new(CooldownManager::with_default_duration(
+        Duration::from_millis(50),
+    ));
 
     // 2. 设置所有 Provider 冷却
     for i in 0..providers {

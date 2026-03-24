@@ -1,0 +1,156 @@
+# KeyCompute 配置文件示例
+# 复制此文件为 config.toml 并根据需要修改
+# 环境变量优先级高于配置文件，格式：KC__SECTION__KEY=value
+
+# ==================== 服务器配置 ====================
+[server]
+# 服务器绑定地址
+bind_addr = "0.0.0.0"
+# 服务器监听端口
+port = 3000
+# 工作线程数（可选，默认使用 CPU 核心数）
+# workers = 4
+
+# ==================== 数据库配置 ====================
+[database]
+# PostgreSQL 连接 URL
+url = "postgres://localhost/keycompute"
+# 最大连接数
+max_connections = 10
+# 最小连接数
+min_connections = 2
+# 连接超时时间（秒）
+connect_timeout_secs = 30
+# 连接空闲超时时间（秒）
+idle_timeout_secs = 600
+# 连接最大生命周期（秒）
+max_lifetime_secs = 1800
+
+# ==================== Redis 配置（可选）====================
+[redis]
+# Redis 连接 URL
+url = "redis://127.0.0.1:6379"
+# 键前缀（用于多租户隔离）
+# key_prefix = "kc:prod:"
+# 连接池大小
+pool_size = 10
+# 连接超时（秒）
+connect_timeout_secs = 5
+
+# ==================== 认证配置 ====================
+[auth]
+# JWT 密钥（生产环境必须修改！）
+jwt_secret = "change-me-in-production"
+# JWT 签发者
+jwt_issuer = "keycompute"
+# JWT 过期时间（秒）
+jwt_expiry_secs = 3600
+# API Key 密钥（生产环境必须修改！）
+api_key_secret = "change-me-in-production"
+
+# ==================== 限流配置 ====================
+[ratelimit]
+# 每分钟请求数限制
+rpm_limit = 60
+# 每分钟 Token 数限制
+tpm_limit = 10000
+# 并发请求限制
+concurrency_limit = 10
+# 限流窗口大小（秒）
+window_secs = 60
+
+# ==================== 路由配置 ====================
+[routing]
+# 成本权重（0.0 - 1.0）
+cost_weight = 0.3
+# 延迟权重
+latency_weight = 0.25
+# 成功率权重
+success_weight = 0.25
+# 健康评分权重
+health_weight = 0.2
+# 不健康 Provider 惩罚分数
+unhealthy_penalty = 100.0
+# 高延迟阈值（毫秒）
+high_latency_threshold_ms = 1000
+
+# ==================== Gateway 配置 ====================
+[gateway]
+# 最大重试次数
+max_retries = 3
+# 请求超时时间（秒）
+timeout_secs = 120
+# 是否启用 fallback
+enable_fallback = true
+# HTTP 请求超时（秒）
+request_timeout_secs = 120
+# 流式请求超时（秒）
+stream_timeout_secs = 600
+
+[gateway.retry]
+# 初始退避时间（毫秒）
+initial_backoff_ms = 100
+# 最大退避时间（毫秒）
+max_backoff_ms = 10000
+# 退避倍数
+backoff_multiplier = 2.0
+
+# Gateway HTTP 代理配置（可选）
+# 用于多代理出口、按 Provider 路由到不同代理
+# [gateway.proxy]
+# Provider 级代理映射
+# [gateway.proxy.providers]
+# openai = "http://proxy-openai:8080"
+# claude = "http://proxy-claude:8080"
+# deepseek = "http://proxy-cn:8080"
+
+# 账号级代理映射（可选，最高优先级）
+# [gateway.proxy.accounts]
+# "openai:550e8400-e29b-41d4-a716-446655440000" = "http://premium-proxy:8080"
+
+# 通配符规则（可选）
+# [gateway.proxy.patterns]
+# "*-cn" = "http://cn-proxy:8080"
+# "openai-*" = "http://openai-proxy:8080"
+
+# ==================== Provider 配置 ====================
+[provider.openai]
+# OpenAI API 端点
+endpoint = "https://api.openai.com/v1"
+# API Key（建议通过环境变量 KC__PROVIDER__OPENAI__API_KEY 设置）
+# api_key = "sk-..."
+# 请求超时（秒，可选）
+# timeout_secs = 120
+
+[provider.deepseek]
+# DeepSeek API 端点
+endpoint = "https://api.deepseek.com/v1"
+# API Key（建议通过环境变量 KC__PROVIDER__DEEPSEEK__API_KEY 设置）
+# api_key = "sk-..."
+
+# vLLM 配置示例（可选）
+# [provider.vllm]
+# endpoint = "http://localhost:8000/v1"
+# api_key = "your-api-key"
+# timeout_secs = 300
+
+# Claude 配置示例（可选）
+# [provider.claude]
+# endpoint = "https://api.anthropic.com/v1"
+# api_key = "sk-ant-..."
+
+# Gemini 配置示例（可选）
+# [provider.gemini]
+# endpoint = "https://generativelanguage.googleapis.com/v1"
+# api_key = "your-api-key"
+
+# Ollama 配置示例（可选）
+# [provider.ollama]
+# endpoint = "http://localhost:11434/v1"
+# timeout_secs = 300
+
+# 自定义 Provider 配置示例
+# [provider.custom.localai]
+# endpoint = "http://localhost:8080/v1"
+# api_key = "your-api-key"
+# models = ["llama2", "mistral"]

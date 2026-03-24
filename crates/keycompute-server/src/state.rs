@@ -7,10 +7,11 @@ use keycompute_billing::BillingService;
 use keycompute_provider_trait::ProviderAdapter;
 use keycompute_routing::RoutingEngine;
 use keycompute_runtime::{AccountStateStore, CooldownManager, ProviderHealthStore};
-use llm_gateway::{GatewayBuilder, GatewayExecutor, HttpProxy, ProxyConfig};
+use llm_gateway::{GatewayBuilder, GatewayExecutor, HttpProxy, ProxyConfig as HttpProxyConfig};
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 /// 限流后端配置
 #[derive(Debug, Clone)]
@@ -34,6 +35,8 @@ pub struct AppStateConfig {
     pub rate_limit: RateLimitBackendConfig,
     /// API Key 验证密钥
     pub api_key_secret: String,
+    /// Gateway 配置
+    pub gateway: keycompute_config::GatewayConfig,
 }
 
 impl Default for AppStateConfig {
@@ -41,6 +44,24 @@ impl Default for AppStateConfig {
         Self {
             rate_limit: RateLimitBackendConfig::default(),
             api_key_secret: "default-secret".to_string(),
+            gateway: keycompute_config::GatewayConfig::default(),
+        }
+    }
+}
+
+impl AppStateConfig {
+    /// 从 keycompute_config::AppConfig 创建
+    pub fn from_config(config: &keycompute_config::AppConfig) -> Self {
+        Self {
+            rate_limit: if let Some(redis) = &config.redis {
+                RateLimitBackendConfig::Redis {
+                    url: redis.url.clone(),
+                }
+            } else {
+                RateLimitBackendConfig::Memory
+            },
+            api_key_secret: config.auth.api_key_secret.clone(),
+            gateway: config.gateway.clone(),
         }
     }
 }
@@ -117,8 +138,11 @@ impl AppState {
             Arc::clone(&cooldown),
         ));
 
-        // 创建 Internal HTTP Proxy（统一上游连接管理）
-        let http_proxy = Arc::new(HttpProxy::new(ProxyConfig::default()));
+        // 创建 Internal HTTP Proxy（统一上游连接管理，支持配置）
+        let http_proxy = Arc::new(Self::create_http_proxy(
+            config.gateway.proxy.as_ref(),
+            &config.gateway,
+        ));
 
         // 创建 Gateway 执行器，注册所有 Provider，集成 HTTP Proxy
         let gateway = Arc::new(
@@ -155,7 +179,9 @@ impl AppState {
     }
 
     /// 根据配置创建限流服务
-    fn create_rate_limiter(config: &RateLimitBackendConfig) -> keycompute_ratelimit::RateLimitService {
+    fn create_rate_limiter(
+        config: &RateLimitBackendConfig,
+    ) -> keycompute_ratelimit::RateLimitService {
         match config {
             RateLimitBackendConfig::Memory => {
                 keycompute_ratelimit::RateLimitService::default_memory()
@@ -170,6 +196,43 @@ impl AppState {
             RateLimitBackendConfig::Redis { .. } => {
                 panic!("Redis backend requested but redis feature is not enabled")
             }
+        }
+    }
+
+    /// 创建 HTTP Proxy（支持从配置读取代理设置）
+    fn create_http_proxy(
+        proxy_config: Option<&keycompute_config::ProxyConfig>,
+        gateway_config: &keycompute_config::GatewayConfig,
+    ) -> HttpProxy {
+        // 创建 HTTP Proxy 配置
+        let http_proxy_config = HttpProxyConfig::default()
+            .with_request_timeout(Duration::from_secs(gateway_config.request_timeout_secs))
+            .with_stream_timeout(Duration::from_secs(gateway_config.stream_timeout_secs));
+
+        if let Some(proxy) = proxy_config {
+            // 有代理配置，创建带代理的 HttpProxy
+            let mut proxies = proxy.providers.clone();
+
+            // 添加通配符规则
+            if let Some(patterns) = &proxy.patterns {
+                for (pattern, url) in patterns {
+                    // 通配符规则以 pattern: 为前缀存储
+                    proxies.insert(format!("pattern:{}", pattern), url.clone());
+                }
+            }
+
+            // 添加账号级代理
+            if let Some(accounts) = &proxy.accounts {
+                for (key, url) in accounts {
+                    // 账号级代理以 account: 为前缀存储
+                    proxies.insert(format!("account:{}", key), url.clone());
+                }
+            }
+
+            HttpProxy::with_proxies(http_proxy_config, proxies)
+        } else {
+            // 无代理配置，使用默认 HttpProxy
+            HttpProxy::new(http_proxy_config)
         }
     }
 
@@ -200,8 +263,11 @@ impl AppState {
             Arc::clone(&pool),
         ));
 
-        // 创建 Internal HTTP Proxy（统一上游连接管理）
-        let http_proxy = Arc::new(HttpProxy::new(ProxyConfig::default()));
+        // 创建 Internal HTTP Proxy（统一上游连接管理，支持配置）
+        let http_proxy = Arc::new(Self::create_http_proxy(
+            config.gateway.proxy.as_ref(),
+            &config.gateway,
+        ));
 
         // 创建 Gateway 执行器，注册所有 Provider，集成 HTTP Proxy
         let gateway = Arc::new(
@@ -266,8 +332,11 @@ impl AppState {
             Arc::clone(&cooldown),
         ));
 
-        // 创建 Internal HTTP Proxy
-        let http_proxy = Arc::new(HttpProxy::new(ProxyConfig::default()));
+        // 创建 Internal HTTP Proxy（支持配置）
+        let http_proxy = Arc::new(Self::create_http_proxy(
+            config.gateway.proxy.as_ref(),
+            &config.gateway,
+        ));
 
         // 创建 Gateway 执行器，使用自定义 Provider
         let mut builder = GatewayBuilder::new().with_http_proxy(Arc::clone(&http_proxy));

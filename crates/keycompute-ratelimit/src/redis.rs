@@ -202,7 +202,7 @@ impl RedisRateLimiter {
     pub async fn flush_all(&self) -> Result<()> {
         // 使用 SCAN 查找并删除所有限流相关的 key
         let pattern = format!("{}:*", self.key_prefix);
-        
+
         // 收集所有匹配的 key
         let mut keys = Vec::new();
         {
@@ -211,7 +211,7 @@ impl RedisRateLimiter {
                 .scan_match(&pattern)
                 .await
                 .map_err(|e| KeyComputeError::Internal(format!("Redis error: {}", e)))?;
-            
+
             while let Some(key) = iter.next_item().await {
                 keys.push(key);
             }

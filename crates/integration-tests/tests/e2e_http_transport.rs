@@ -358,7 +358,9 @@ async fn test_various_http_status_codes() {
 
     // 1. 测试 200 OK
     let transport = MockHttpTransportFactory::success();
-    let result = transport.post_json("http://test", vec![], "{}".to_string()).await;
+    let result = transport
+        .post_json("http://test", vec![], "{}".to_string())
+        .await;
     chain.add_step(
         "integration-tests::mocks",
         "HttpStatus::200_ok",
@@ -368,7 +370,9 @@ async fn test_various_http_status_codes() {
 
     // 2. 测试 401 Unauthorized
     let transport = MockHttpTransportFactory::unauthorized();
-    let result = transport.post_json("http://test", vec![], "{}".to_string()).await;
+    let result = transport
+        .post_json("http://test", vec![], "{}".to_string())
+        .await;
     chain.add_step(
         "integration-tests::mocks",
         "HttpStatus::401_unauthorized",
@@ -386,7 +390,9 @@ async fn test_various_http_status_codes() {
 
     // 3. 测试 429 Rate Limited
     let transport = MockHttpTransportFactory::rate_limited(60);
-    let result = transport.post_json("http://test", vec![], "{}".to_string()).await;
+    let result = transport
+        .post_json("http://test", vec![], "{}".to_string())
+        .await;
     chain.add_step(
         "integration-tests::mocks",
         "HttpStatus::429_rate_limited",
@@ -396,7 +402,9 @@ async fn test_various_http_status_codes() {
 
     // 4. 测试 500 Server Error
     let transport = MockHttpTransportFactory::server_error();
-    let result = transport.post_json("http://test", vec![], "{}".to_string()).await;
+    let result = transport
+        .post_json("http://test", vec![], "{}".to_string())
+        .await;
     chain.add_step(
         "integration-tests::mocks",
         "HttpStatus::500_server_error",
@@ -430,7 +438,9 @@ async fn test_response_sequence() {
     );
 
     // 2. 按顺序消费响应
-    let r1 = transport.post_json("http://test", vec![], "{}".to_string()).await;
+    let r1 = transport
+        .post_json("http://test", vec![], "{}".to_string())
+        .await;
     chain.add_step(
         "integration-tests::mocks",
         "ResponseSequence::first",
@@ -438,7 +448,9 @@ async fn test_response_sequence() {
         r1.is_ok() && r1.unwrap() == "first",
     );
 
-    let r2 = transport.post_json("http://test", vec![], "{}".to_string()).await;
+    let r2 = transport
+        .post_json("http://test", vec![], "{}".to_string())
+        .await;
     chain.add_step(
         "integration-tests::mocks",
         "ResponseSequence::second",
@@ -446,7 +458,9 @@ async fn test_response_sequence() {
         r2.is_ok() && r2.unwrap() == "second",
     );
 
-    let r3 = transport.post_json("http://test", vec![], "{}".to_string()).await;
+    let r3 = transport
+        .post_json("http://test", vec![], "{}".to_string())
+        .await;
     chain.add_step(
         "integration-tests::mocks",
         "ResponseSequence::third_error",
@@ -454,7 +468,9 @@ async fn test_response_sequence() {
         r3.is_err(),
     );
 
-    let r4 = transport.post_json("http://test", vec![], "{}".to_string()).await;
+    let r4 = transport
+        .post_json("http://test", vec![], "{}".to_string())
+        .await;
     chain.add_step(
         "integration-tests::mocks",
         "ResponseSequence::fourth_recovered",
@@ -484,7 +500,9 @@ async fn test_delayed_response() {
 
     // 2. 测量响应时间
     let start = std::time::Instant::now();
-    let result = transport.post_json("http://test", vec![], "{}".to_string()).await;
+    let result = transport
+        .post_json("http://test", vec![], "{}".to_string())
+        .await;
     let elapsed = start.elapsed();
 
     chain.add_step(
@@ -530,7 +548,9 @@ async fn test_sse_stream_response() {
     );
 
     // 2. 发送流式请求
-    let result = transport.post_stream("http://test", vec![], "{}".to_string()).await;
+    let result = transport
+        .post_stream("http://test", vec![], "{}".to_string())
+        .await;
     chain.add_step(
         "integration-tests::mocks",
         "SSEStream::request_success",
@@ -574,7 +594,9 @@ async fn test_openai_style_stream() {
     );
 
     // 2. 消费流
-    let result = transport.post_stream("http://test", vec![], "{}".to_string()).await;
+    let result = transport
+        .post_stream("http://test", vec![], "{}".to_string())
+        .await;
     if let Ok(mut stream) = result {
         let mut chunks = Vec::new();
         while let Some(chunk) = stream.next().await {
@@ -630,7 +652,9 @@ async fn test_stream_with_error() {
     );
 
     // 2. 消费流
-    let result = transport.post_stream("http://test", vec![], "{}".to_string()).await;
+    let result = transport
+        .post_stream("http://test", vec![], "{}".to_string())
+        .await;
     if let Ok(mut stream) = result {
         let mut success_count = 0;
         let mut error_found = false;
@@ -684,7 +708,9 @@ async fn test_slow_stream() {
 
     // 2. 测量流消费时间
     let start = std::time::Instant::now();
-    let result = transport.post_stream("http://test", vec![], "{}".to_string()).await;
+    let result = transport
+        .post_stream("http://test", vec![], "{}".to_string())
+        .await;
 
     if let Ok(mut stream) = result {
         while stream.next().await.is_some() {}
@@ -773,7 +799,9 @@ async fn test_multiple_transport_instances() {
     );
 
     // 2. 测试成功 Transport
-    let r1 = success_transport.post_json("http://test", vec![], "{}".to_string()).await;
+    let r1 = success_transport
+        .post_json("http://test", vec![], "{}".to_string())
+        .await;
     chain.add_step(
         "integration-tests::mocks",
         "MultipleTransports::success",
@@ -782,7 +810,9 @@ async fn test_multiple_transport_instances() {
     );
 
     // 3. 测试错误 Transport
-    let r2 = error_transport.post_json("http://test", vec![], "{}".to_string()).await;
+    let r2 = error_transport
+        .post_json("http://test", vec![], "{}".to_string())
+        .await;
     chain.add_step(
         "integration-tests::mocks",
         "MultipleTransports::error",
@@ -791,7 +821,9 @@ async fn test_multiple_transport_instances() {
     );
 
     // 4. 测试限流 Transport
-    let r3 = rate_limited_transport.post_json("http://test", vec![], "{}".to_string()).await;
+    let r3 = rate_limited_transport
+        .post_json("http://test", vec![], "{}".to_string())
+        .await;
     chain.add_step(
         "integration-tests::mocks",
         "MultipleTransports::rate_limited",
@@ -911,7 +943,10 @@ async fn test_concurrent_requests_with_mock_transport() {
     chain.add_step(
         "integration-tests::mocks",
         "ConcurrentMockTransport::setup",
-        format!("Transport setup for {} concurrent requests", concurrent_requests),
+        format!(
+            "Transport setup for {} concurrent requests",
+            concurrent_requests
+        ),
         true,
     );
 
@@ -937,7 +972,10 @@ async fn test_concurrent_requests_with_mock_transport() {
     chain.add_step(
         "integration-tests::mocks",
         "ConcurrentMockTransport::all_succeeded",
-        format!("All requests succeeded: {}", success_count.load(std::sync::atomic::Ordering::Relaxed)),
+        format!(
+            "All requests succeeded: {}",
+            success_count.load(std::sync::atomic::Ordering::Relaxed)
+        ),
         success_count.load(std::sync::atomic::Ordering::Relaxed) == concurrent_requests as u64,
     );
 

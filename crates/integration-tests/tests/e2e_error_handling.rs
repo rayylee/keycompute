@@ -10,8 +10,8 @@ use futures::StreamExt;
 use integration_tests::common::VerificationChain;
 use integration_tests::mocks::provider::MockProviderFactory;
 use keycompute_provider_trait::{ProviderAdapter, StreamEvent, UpstreamRequest};
-use keycompute_runtime::{CooldownManager, CooldownReason, ProviderHealthStore};
 use keycompute_routing::RoutingEngine;
+use keycompute_runtime::{CooldownManager, CooldownReason, ProviderHealthStore};
 use keycompute_types::{PricingSnapshot, RequestContext};
 use rust_decimal::Decimal;
 use std::sync::Arc;
@@ -255,7 +255,9 @@ async fn test_cooldown_recovery() {
     let mut chain = VerificationChain::new();
 
     // 1. 设置短时间冷却
-    let cooldown = Arc::new(CooldownManager::with_default_duration(Duration::from_millis(100)));
+    let cooldown = Arc::new(CooldownManager::with_default_duration(
+        Duration::from_millis(100),
+    ));
     let provider_name = "recovering-provider";
 
     cooldown.set_provider_cooldown(
@@ -533,8 +535,10 @@ async fn test_stream_continue_after_error() {
     chain.add_step(
         "integration-tests::mocks",
         "StreamContinue::total_events",
-        format!("Stream continued after error, delta={}, error={}, usage={}, done={}",
-                delta_count, has_error, has_usage, has_done),
+        format!(
+            "Stream continued after error, delta={}, error={}, usage={}, done={}",
+            delta_count, has_error, has_usage, has_done
+        ),
         true, // 流没有因错误而终止
     );
 
@@ -562,7 +566,9 @@ async fn test_fallback_on_stream_error() {
     let transport = keycompute_provider_trait::DefaultHttpTransport::new();
     let request = UpstreamRequest::new("http://test", "test-key", "gpt-4o");
 
-    let primary_result = failing_provider.stream_chat(&transport, request.clone()).await;
+    let primary_result = failing_provider
+        .stream_chat(&transport, request.clone())
+        .await;
     chain.add_step(
         "llm-gateway",
         "FallbackChain::primary_failed",
@@ -609,8 +615,7 @@ async fn test_empty_response() {
     let mut chain = VerificationChain::new();
 
     // 1. 创建返回空内容的 Provider
-    let provider = MockProviderFactory::create_openai()
-        .with_chunks(vec![]); // 空 chunks
+    let provider = MockProviderFactory::create_openai().with_chunks(vec![]); // 空 chunks
 
     let transport = keycompute_provider_trait::DefaultHttpTransport::new();
     let request = UpstreamRequest::new("http://test", "test-key", "gpt-4o");
@@ -633,7 +638,9 @@ async fn test_empty_response() {
         }
 
         // 3. 验证空响应仍有 Usage 和 Done
-        let has_usage = events.iter().any(|e| matches!(e, StreamEvent::Usage { .. }));
+        let has_usage = events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::Usage { .. }));
         let has_done = events.iter().any(|e| matches!(e, StreamEvent::Done));
 
         chain.add_step(
@@ -661,8 +668,7 @@ async fn test_large_token_count() {
     let mut chain = VerificationChain::new();
 
     // 1. 创建大 token 计数的 Provider
-    let provider = MockProviderFactory::create_openai()
-        .with_tokens(u32::MAX, u32::MAX); // 最大值
+    let provider = MockProviderFactory::create_openai().with_tokens(u32::MAX, u32::MAX); // 最大值
 
     let transport = keycompute_provider_trait::DefaultHttpTransport::new();
     let request = UpstreamRequest::new("http://test", "test-key", "gpt-4o");
@@ -672,14 +678,25 @@ async fn test_large_token_count() {
     let mut usage_event: Option<StreamEvent> = None;
 
     while let Some(event) = stream.next().await {
-        if let Ok(StreamEvent::Usage { input_tokens, output_tokens }) = event {
-            usage_event = Some(StreamEvent::Usage { input_tokens, output_tokens });
+        if let Ok(StreamEvent::Usage {
+            input_tokens,
+            output_tokens,
+        }) = event
+        {
+            usage_event = Some(StreamEvent::Usage {
+                input_tokens,
+                output_tokens,
+            });
             break;
         }
     }
 
     // 3. 验证大数值处理
-    if let Some(StreamEvent::Usage { input_tokens, output_tokens }) = usage_event {
+    if let Some(StreamEvent::Usage {
+        input_tokens,
+        output_tokens,
+    }) = usage_event
+    {
         chain.add_step(
             "integration-tests::mocks",
             "LargeToken::input",
@@ -716,7 +733,10 @@ async fn test_failure_count_reset() {
     chain.add_step(
         "integration-tests::mocks",
         "FailureCount::after_failures",
-        format!("Failure count after 2 failures: {}", provider.failure_count()),
+        format!(
+            "Failure count after 2 failures: {}",
+            provider.failure_count()
+        ),
         provider.failure_count() == 2,
     );
 

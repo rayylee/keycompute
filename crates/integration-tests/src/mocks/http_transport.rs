@@ -149,10 +149,10 @@ impl MockStreamConfig {
                 )
             })
             .collect();
-        
+
         let mut result = chunks;
         result.push("data: [DONE]".to_string());
-        
+
         Self::simple(result)
     }
 
@@ -293,7 +293,11 @@ impl MockHttpTransport {
 
     /// 设置错误响应
     pub fn with_error(mut self, status: u16, message: impl Into<String>) -> Self {
-        self.responses = Mutex::new(vec![MockResponse::error(status, message)].into_iter().collect());
+        self.responses = Mutex::new(
+            vec![MockResponse::error(status, message)]
+                .into_iter()
+                .collect(),
+        );
         self
     }
 
@@ -450,7 +454,10 @@ impl HttpTransport for MockHttpTransport {
                     }
 
                     let chunk = chunks[index].clone();
-                    Some((Ok(Bytes::from(chunk)), (chunks, index + 1, delay, error_at, error_message)))
+                    Some((
+                        Ok(Bytes::from(chunk)),
+                        (chunks, index + 1, delay, error_at, error_message),
+                    ))
                 },
             );
 
@@ -486,8 +493,7 @@ impl MockHttpTransportFactory {
 
     /// 创建超时的 Mock Transport
     pub fn timeout(delay: Duration) -> MockHttpTransport {
-        MockHttpTransport::new()
-            .with_response(MockResponse::timeout(delay))
+        MockHttpTransport::new().with_response(MockResponse::timeout(delay))
     }
 
     /// 创建带代理的 Mock Transport
@@ -517,7 +523,8 @@ impl MockHttpTransportFactory {
 
     /// 创建服务器错误的 Mock Transport
     pub fn server_error() -> MockHttpTransport {
-        MockHttpTransport::new().with_response(MockResponse::internal_error("Internal server error"))
+        MockHttpTransport::new()
+            .with_response(MockResponse::internal_error("Internal server error"))
     }
 
     /// 创建响应序列
@@ -556,14 +563,18 @@ mod tests {
     #[tokio::test]
     async fn test_mock_transport_success() {
         let transport = MockHttpTransportFactory::success();
-        let result = transport.post_json("http://test", vec![], "{}".to_string()).await;
+        let result = transport
+            .post_json("http://test", vec![], "{}".to_string())
+            .await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_mock_transport_error() {
         let transport = MockHttpTransportFactory::error(500, "Server error");
-        let result = transport.post_json("http://test", vec![], "{}".to_string()).await;
+        let result = transport
+            .post_json("http://test", vec![], "{}".to_string())
+            .await;
         assert!(result.is_err());
     }
 
@@ -572,10 +583,13 @@ mod tests {
         let transport = MockHttpTransport::new();
         transport.add_response(MockResponse::ok("response"));
 
-        let _ = transport.post_json("http://test-url", 
-            vec![("Authorization".to_string(), "Bearer token".to_string())], 
-            r#"{"test": true}"#.to_string()
-        ).await;
+        let _ = transport
+            .post_json(
+                "http://test-url",
+                vec![("Authorization".to_string(), "Bearer token".to_string())],
+                r#"{"test": true}"#.to_string(),
+            )
+            .await;
 
         assert_eq!(transport.request_count(), 1);
         let last = transport.last_request().unwrap();

@@ -246,14 +246,7 @@ impl ProviderAdapter for MockProvider {
                         // 发送错误后继续（模拟部分数据后错误）
                         return Some((
                             Ok(event),
-                            (
-                                chunks,
-                                index + 1,
-                                input,
-                                output,
-                                None,
-                                per_chunk_delay,
-                            ),
+                            (chunks, index + 1, input, output, None, per_chunk_delay),
                         ));
                     }
                 }
@@ -403,7 +396,9 @@ mod tests {
         }
 
         // 应该包含错误事件
-        let has_error = events.iter().any(|e| matches!(e, StreamEvent::Error { .. }));
+        let has_error = events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::Error { .. }));
         assert!(has_error, "Should have error event");
     }
 
