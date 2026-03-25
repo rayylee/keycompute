@@ -25,6 +25,10 @@ pub enum ApiError {
     Config(String),
     /// 内部错误
     Internal(String),
+    /// 请求参数错误
+    BadRequest(String),
+    /// 资源未找到
+    NotFound(String),
 }
 
 impl fmt::Display for ApiError {
@@ -36,6 +40,8 @@ impl fmt::Display for ApiError {
             ApiError::Provider(msg) => write!(f, "Provider error: {}", msg),
             ApiError::Config(msg) => write!(f, "Config error: {}", msg),
             ApiError::Internal(msg) => write!(f, "Internal error: {}", msg),
+            ApiError::BadRequest(msg) => write!(f, "Bad request: {}", msg),
+            ApiError::NotFound(msg) => write!(f, "Not found: {}", msg),
         }
     }
 }
@@ -51,6 +57,8 @@ impl IntoResponse for ApiError {
             ApiError::Provider(msg) => (StatusCode::BAD_GATEWAY, msg.clone()),
             ApiError::Config(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
             ApiError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
+            ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
+            ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
         };
 
         let body = Json(json!({
@@ -73,6 +81,8 @@ fn error_type(error: &ApiError) -> &'static str {
         ApiError::Provider(_) => "provider_error",
         ApiError::Config(_) => "config_error",
         ApiError::Internal(_) => "internal_error",
+        ApiError::BadRequest(_) => "bad_request_error",
+        ApiError::NotFound(_) => "not_found_error",
     }
 }
 
@@ -92,6 +102,8 @@ impl From<keycompute_types::KeyComputeError> for ApiError {
             }
             keycompute_types::KeyComputeError::ProviderError(msg) => ApiError::Provider(msg),
             keycompute_types::KeyComputeError::Internal(msg) => ApiError::Internal(msg),
+            keycompute_types::KeyComputeError::ValidationError(msg) => ApiError::BadRequest(msg),
+            keycompute_types::KeyComputeError::NotFound(msg) => ApiError::NotFound(msg),
             _ => ApiError::Internal(err.to_string()),
         }
     }

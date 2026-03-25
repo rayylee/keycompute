@@ -1,11 +1,19 @@
 //! Auth & User Module
 //!
-//! Produce AI Key / JWT 解析，User / Tenant 加载。
+//! 提供 API Key、JWT、邮箱/密码认证功能，以及 User / Tenant 加载。
 
 pub mod api_key;
 pub mod jwt;
+pub mod password;
 pub mod permission;
 pub mod user;
+
+// Password 模块重新导出
+pub use password::{
+    EmailValidator, LoginRequest, LoginResponse, LoginService, PasswordHasher,
+    PasswordResetService, PasswordValidator, RegisterRequest, RegisterResponse,
+    RegistrationService, RequestPasswordResetRequest, ResetPasswordRequest,
+};
 
 pub use api_key::{ProduceAiKeyAuth, ProduceAiKeyValidator};
 pub use jwt::{JwtClaims, JwtValidator};
@@ -161,6 +169,11 @@ impl AuthService {
     /// 设置 JWT 验证器
     pub fn set_jwt_validator(&mut self, jwt_validator: JwtValidator) {
         self.jwt_validator = Some(jwt_validator);
+    }
+
+    /// 获取 JWT 验证器
+    pub fn get_jwt_validator(&self) -> Option<&JwtValidator> {
+        self.jwt_validator.as_ref()
     }
 
     /// 验证 Produce AI Key

@@ -2,6 +2,7 @@
 //!
 //! 处理各种 HTTP 请求
 
+pub mod auth;
 pub mod billing;
 pub mod chat;
 pub mod gateway;
@@ -10,6 +11,11 @@ pub mod models;
 pub mod pricing;
 pub mod routing;
 
+pub use auth::{
+    forgot_password_handler, login_handler, refresh_token_handler, register_handler,
+    resend_verification_handler, reset_password_handler, verify_email_handler,
+    verify_reset_token_handler,
+};
 pub use billing::{calculate_cost, get_billing_stats, list_billing_records, trigger_billing};
 pub use chat::chat_completions;
 pub use gateway::{check_provider_health, get_execution_stats, get_gateway_status};

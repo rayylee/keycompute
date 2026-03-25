@@ -4,9 +4,12 @@
 
 use crate::{
     handlers::{
-        calculate_cost, chat_completions, check_provider_health, debug_routing, get_billing_stats,
-        get_execution_stats, get_gateway_status, get_pricing, get_pricing_cost,
-        get_provider_health, health_check, list_billing_records, list_models, trigger_billing,
+        calculate_cost, chat_completions, check_provider_health, debug_routing,
+        forgot_password_handler, get_billing_stats, get_execution_stats, get_gateway_status,
+        get_pricing, get_pricing_cost, get_provider_health, health_check, list_billing_records,
+        list_models, login_handler, refresh_token_handler, register_handler,
+        resend_verification_handler, reset_password_handler, trigger_billing, verify_email_handler,
+        verify_reset_token_handler,
     },
     middleware::{cors_layer, rate_limit_middleware, request_logger, trace_id_middleware},
     state::AppState,
@@ -20,6 +23,23 @@ use tower_http::trace::TraceLayer;
 
 /// 创建路由器
 pub fn create_router(state: AppState) -> Router {
+    // 认证路由（不需要限流，或使用更宽松的限流）
+    let auth_routes = Router::new()
+        .route("/auth/register", post(register_handler))
+        .route("/auth/login", post(login_handler))
+        .route("/auth/verify-email/{token}", get(verify_email_handler))
+        .route("/auth/forgot-password", post(forgot_password_handler))
+        .route("/auth/reset-password", post(reset_password_handler))
+        .route(
+            "/auth/verify-reset-token/{token}",
+            get(verify_reset_token_handler),
+        )
+        .route("/auth/refresh-token", post(refresh_token_handler))
+        .route(
+            "/auth/resend-verification",
+            post(resend_verification_handler),
+        );
+
     // OpenAI 兼容 API 路由（需要限流）
     let api_routes = Router::new()
         .route("/v1/chat/completions", post(chat_completions))
@@ -59,6 +79,7 @@ pub fn create_router(state: AppState) -> Router {
 
     // 合并所有路由
     Router::new()
+        .merge(auth_routes)
         .merge(api_routes)
         .merge(pricing_routes)
         .merge(billing_routes)

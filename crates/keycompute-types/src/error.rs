@@ -28,6 +28,9 @@ pub enum KeyComputeError {
 
     #[error("validation error: {0}")]
     ValidationError(String),
+
+    #[error("not found: {0}")]
+    NotFound(String),
 }
 
 pub type Result<T> = std::result::Result<T, KeyComputeError>;

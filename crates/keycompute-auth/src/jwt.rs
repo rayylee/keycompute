@@ -111,6 +111,11 @@ impl JwtValidator {
         self
     }
 
+    /// 获取默认过期时间（秒）
+    pub fn default_expiration(&self) -> i64 {
+        self.default_expiration
+    }
+
     /// 验证 JWT Token
     pub fn validate(&self, token: &str) -> Result<AuthContext> {
         tracing::debug!("Validating JWT token");
