@@ -5,6 +5,7 @@
 pub mod admin;
 pub mod auth;
 pub mod billing;
+pub mod distribution;
 pub mod gateway;
 pub mod health;
 pub mod openai;
@@ -23,6 +24,13 @@ pub use auth::{
 pub use openai::{
     ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ListModelsResponse, Model,
     chat_completions, list_models, retrieve_model,
+};
+
+// Distribution 分销管理
+pub use distribution::{
+    create_distribution_rule, delete_distribution_rule, get_distribution_stats,
+    get_my_distribution_earnings, get_my_referrals, list_distribution_records,
+    list_distribution_rules, update_distribution_rule,
 };
 
 // 用户自服务

@@ -201,14 +201,18 @@ impl BillingService {
     ///
     /// 输入: usage + pricing_snapshot + request metadata
     /// 输出: 写入数据库后的 UsageLog，并触发 Distribution 处理
+    ///
+    /// 分销逻辑：
+    /// 1. 查询用户的推荐关系（user_referrals 表）
+    /// 2. 查询租户的分销规则（tenant_distribution_rules 表）
+    /// 3. 计算分成并保存
     pub async fn finalize_and_trigger_distribution(
         &self,
         ctx: &RequestContext,
         provider_name: &str,
         account_id: Uuid,
         status: &str,
-        level1_beneficiary_id: Option<Uuid>,
-        level2_beneficiary_id: Option<Uuid>,
+        user_id: Uuid,
     ) -> Result<UsageLog> {
         // 先执行结算并保存 usage_log
         let usage_log = self
@@ -216,7 +220,7 @@ impl BillingService {
             .await?;
 
         // 触发分销处理
-        if let Some(distribution) = &self.distribution {
+        if let (Some(distribution), Some(pool)) = (&self.distribution, &self.pool) {
             let user_amount = bigdecimal_to_decimal(&usage_log.user_amount);
 
             // 创建分销上下文
@@ -227,18 +231,74 @@ impl BillingService {
                 &usage_log.currency,
             );
 
-            // 计算分成（使用默认比例 3% / 2%）
-            let level1_ratio =
-                Decimal::from_f64_retain(0.03).unwrap_or(Decimal::from(3) / Decimal::from(100));
-            let level2_ratio =
-                Decimal::from_f64_retain(0.02).unwrap_or(Decimal::from(2) / Decimal::from(100));
+            // 查询用户的推荐关系
+            let (level1_beneficiary, level2_beneficiary) =
+                match keycompute_db::UserReferral::find_by_user(pool, user_id).await {
+                    Ok(Some(referral)) => {
+                        (referral.level1_referrer_id, referral.level2_referrer_id)
+                    }
+                    Ok(None) => (None, None),
+                    Err(e) => {
+                        tracing::warn!(
+                            user_id = %user_id,
+                            error = %e,
+                            "Failed to find user referral, proceeding without distribution"
+                        );
+                        (None, None)
+                    }
+                };
 
+            // 如果没有推荐关系，跳过分销
+            if level1_beneficiary.is_none() {
+                tracing::debug!(
+                    user_id = %user_id,
+                    "No referral relationship found, skipping distribution"
+                );
+                return Ok(usage_log);
+            }
+
+            // 查询租户的分销规则
+            let rules =
+                match keycompute_db::TenantDistributionRule::find_by_tenant(pool, ctx.tenant_id)
+                    .await
+                {
+                    Ok(rules) => rules,
+                    Err(e) => {
+                        tracing::warn!(
+                            tenant_id = %ctx.tenant_id,
+                            error = %e,
+                            "Failed to find distribution rules, using default ratios"
+                        );
+                        vec![]
+                    }
+                };
+
+            // 确定分成比例（优先使用规则表，否则使用默认值）
+            let default_level1_ratio = Decimal::from(3) / Decimal::from(100); // 3%
+            let default_level2_ratio = Decimal::from(2) / Decimal::from(100); // 2%
+
+            let level1_ratio = rules
+                .iter()
+                .find(|r| r.beneficiary_id == level1_beneficiary.unwrap_or_else(Uuid::nil))
+                .map(|r| bigdecimal_to_decimal(&r.share_ratio))
+                .unwrap_or(default_level1_ratio);
+
+            let level2_ratio = level2_beneficiary
+                .and_then(|l2_id| {
+                    rules
+                        .iter()
+                        .find(|r| r.beneficiary_id == l2_id)
+                        .map(|r| bigdecimal_to_decimal(&r.share_ratio))
+                })
+                .unwrap_or(default_level2_ratio);
+
+            // 计算分成
             let shares = calculate_shares(
                 user_amount,
                 level1_ratio,
                 level2_ratio,
-                level1_beneficiary_id.unwrap_or_else(Uuid::nil),
-                level2_beneficiary_id,
+                level1_beneficiary.unwrap_or_else(Uuid::nil),
+                level2_beneficiary,
             );
 
             // 处理并保存分销记录
@@ -248,6 +308,8 @@ impl BillingService {
                         request_id = %ctx.request_id,
                         usage_log_id = %usage_log.id,
                         distribution_records = records.len(),
+                        level1_ratio = %level1_ratio,
+                        level2_ratio = %level2_ratio,
                         "Distribution processed successfully"
                     );
                 }

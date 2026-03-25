@@ -13,6 +13,8 @@ pub struct DistributionRecord {
     pub beneficiary_id: Uuid,
     pub share_amount: BigDecimal,
     pub share_ratio: BigDecimal,
+    /// 分销层级: level1, level2
+    pub level: String,
     pub status: String,
     pub settled_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
@@ -26,6 +28,8 @@ pub struct CreateDistributionRecordRequest {
     pub beneficiary_id: Uuid,
     pub share_amount: BigDecimal,
     pub share_ratio: BigDecimal,
+    /// 分销层级: level1, level2
+    pub level: String,
 }
 
 /// 分销统计
@@ -35,6 +39,19 @@ pub struct DistributionStats {
     pub total_amount: BigDecimal,
     pub settled_amount: BigDecimal,
     pub pending_amount: BigDecimal,
+}
+
+/// 分销层级统计
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct DistributionLevelStats {
+    /// 一级分销收益
+    pub level1_amount: BigDecimal,
+    /// 二级分销收益
+    pub level2_amount: BigDecimal,
+    /// 一级分销记录数
+    pub level1_count: i64,
+    /// 二级分销记录数
+    pub level2_count: i64,
 }
 
 impl DistributionRecord {
@@ -47,9 +64,9 @@ impl DistributionRecord {
             r#"
             INSERT INTO distribution_records (
                 usage_log_id, tenant_id, beneficiary_id,
-                share_amount, share_ratio, status
+                share_amount, share_ratio, level, status
             )
-            VALUES ($1, $2, $3, $4, $5, 'pending')
+            VALUES ($1, $2, $3, $4, $5, $6, 'pending')
             RETURNING *
             "#,
         )
@@ -58,6 +75,7 @@ impl DistributionRecord {
         .bind(&req.beneficiary_id)
         .bind(&req.share_amount)
         .bind(&req.share_ratio)
+        .bind(&req.level)
         .fetch_one(pool)
         .await?;
 
@@ -196,5 +214,51 @@ impl DistributionRecord {
         .await?;
 
         Ok(stats)
+    }
+
+    /// 获取受益人按层级的统计
+    pub async fn get_level_stats_by_beneficiary(
+        pool: &sqlx::PgPool,
+        beneficiary_id: Uuid,
+    ) -> Result<DistributionLevelStats, sqlx::Error> {
+        let stats = sqlx::query_as::<_, DistributionLevelStats>(
+            r#"
+            SELECT
+                COALESCE(SUM(CASE WHEN level = 'level1' THEN share_amount ELSE 0 END), 0) as level1_amount,
+                COALESCE(SUM(CASE WHEN level = 'level2' THEN share_amount ELSE 0 END), 0) as level2_amount,
+                COUNT(CASE WHEN level = 'level1' THEN 1 END) as level1_count,
+                COUNT(CASE WHEN level = 'level2' THEN 1 END) as level2_count
+            FROM distribution_records
+            WHERE beneficiary_id = $1
+            "#,
+        )
+        .bind(beneficiary_id)
+        .fetch_one(pool)
+        .await?;
+
+        Ok(stats)
+    }
+
+    /// 获取受益人在某个 usage_log 下的总收益（用于推荐人收益显示）
+    pub async fn get_earnings_for_referral(
+        pool: &sqlx::PgPool,
+        beneficiary_id: Uuid,
+        referred_user_id: Uuid,
+    ) -> Result<BigDecimal, sqlx::Error> {
+        // 查询该推荐用户产生的所有分销收益
+        let result: Option<(BigDecimal,)> = sqlx::query_as(
+            r#"
+            SELECT COALESCE(SUM(dr.share_amount), 0)
+            FROM distribution_records dr
+            JOIN usage_logs ul ON dr.usage_log_id = ul.id
+            WHERE dr.beneficiary_id = $1 AND ul.user_id = $2
+            "#,
+        )
+        .bind(beneficiary_id)
+        .bind(referred_user_id)
+        .fetch_optional(pool)
+        .await?;
+
+        Ok(result.map(|r| r.0).unwrap_or(BigDecimal::from(0)))
     }
 }

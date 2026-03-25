@@ -13,12 +13,13 @@ pub mod tenant_distribution_rule;
 pub mod usage_log;
 pub mod user;
 pub mod user_credential;
+pub mod user_referral;
 
 // 重新导出常用模型
 pub use account::{Account, CreateAccountRequest, UpdateAccountRequest};
 pub use api_key::{CreateProduceAiKeyRequest, ProduceAiKey, ProduceAiKeyResponse};
 pub use distribution_record::{
-    CreateDistributionRecordRequest, DistributionRecord, DistributionStats,
+    CreateDistributionRecordRequest, DistributionLevelStats, DistributionRecord, DistributionStats,
 };
 pub use email_verification::{CreateEmailVerificationRequest, EmailVerification};
 pub use password_reset::{CreatePasswordResetRequest, PasswordReset};
@@ -32,3 +33,4 @@ pub use user::{CreateUserRequest, UpdateUserRequest, User};
 pub use user_credential::{
     CreateUserCredentialRequest, UpdateUserCredentialRequest, UserCredential,
 };
+pub use user_referral::{CreateUserReferralRequest, ReferralStats, UserReferral};

@@ -18,6 +18,7 @@ use keycompute_auth::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use uuid::Uuid;
 
 // ============================================================================
 // 请求/响应类型
@@ -30,6 +31,8 @@ pub struct RegisterRequestJson {
     pub password: String,
     pub name: Option<String>,
     pub tenant_slug: Option<String>,
+    /// 推荐码（推荐人的用户 ID）
+    pub referral_code: Option<String>,
 }
 
 /// 登录请求
@@ -94,6 +97,43 @@ pub async fn register_handler(
         .register(&register_req)
         .await
         .map_err(|e| ApiError::Auth(format!("Registration failed: {}", e)))?;
+
+    // 处理推荐关系
+    if let Some(ref referral_code) = req.referral_code {
+        if let Ok(level1_referrer_id) = Uuid::parse_str(referral_code) {
+            // 查找一级推荐人的推荐人（二级推荐人）
+            let level2_referrer_id =
+                keycompute_db::UserReferral::find_by_user(pool, level1_referrer_id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .and_then(|r| r.level1_referrer_id);
+
+            // 创建推荐关系
+            let referral_req = keycompute_db::CreateUserReferralRequest {
+                user_id: response.user_id,
+                level1_referrer_id: Some(level1_referrer_id),
+                level2_referrer_id,
+                source: Some("referral_code".to_string()),
+            };
+
+            if let Err(e) = keycompute_db::UserReferral::create(pool, &referral_req).await {
+                tracing::warn!(
+                    user_id = %response.user_id,
+                    referrer_id = %level1_referrer_id,
+                    error = %e,
+                    "Failed to create referral relationship"
+                );
+            } else {
+                tracing::info!(
+                    user_id = %response.user_id,
+                    level1_referrer = %level1_referrer_id,
+                    level2_referrer = ?level2_referrer_id,
+                    "Referral relationship created"
+                );
+            }
+        }
+    }
 
     Ok((
         StatusCode::CREATED,
@@ -361,6 +401,7 @@ mod tests {
             password: "SecurePass123!".to_string(),
             name: Some("Test User".to_string()),
             tenant_slug: None,
+            referral_code: None,
         };
 
         assert_eq!(json.email, "test@example.com");

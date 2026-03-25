@@ -16,18 +16,24 @@ use crate::{
         check_provider_health,
         create_account,
         create_api_key,
+        create_distribution_rule,
         // 调试接口
         debug_routing,
         delete_account,
         delete_api_key,
+        delete_distribution_rule,
         delete_user,
         // 认证相关
         forgot_password_handler,
         get_billing_stats,
         // 用户自服务
         get_current_user,
+        // Distribution 分销
+        get_distribution_stats,
         get_execution_stats,
         get_gateway_status,
+        get_my_distribution_earnings,
+        get_my_referrals,
         get_my_usage,
         get_my_usage_stats,
         // 定价和账单
@@ -42,6 +48,8 @@ use crate::{
         // 管理功能（Admin 权限）
         list_all_users,
         list_billing_records,
+        list_distribution_records,
+        list_distribution_rules,
         list_models,
         list_my_api_keys,
         list_tenants,
@@ -54,6 +62,7 @@ use crate::{
         retrieve_model,
         test_account,
         update_account,
+        update_distribution_rule,
         update_profile,
         update_system_settings,
         update_user,
@@ -114,6 +123,12 @@ pub fn create_router(state: AppState) -> Router {
         // 用量统计
         .route("/api/v1/usage", get(get_my_usage))
         .route("/api/v1/usage/stats", get(get_my_usage_stats))
+        // 用户分销收益
+        .route(
+            "/api/v1/me/distribution/earnings",
+            get(get_my_distribution_earnings),
+        )
+        .route("/api/v1/me/distribution/referrals", get(get_my_referrals))
         .layer(from_fn_with_state(state.clone(), rate_limit_middleware));
 
     // ==================== 4. 管理功能 API（需要 Admin 权限） ====================
@@ -146,11 +161,28 @@ pub fn create_router(state: AppState) -> Router {
         get(get_system_settings).put(update_system_settings),
     );
 
+    // Distribution 分销管理（仅 Admin）
+    let admin_distribution_routes = Router::new()
+        .route(
+            "/api/v1/distribution/records",
+            get(list_distribution_records),
+        )
+        .route("/api/v1/distribution/stats", get(get_distribution_stats))
+        .route(
+            "/api/v1/distribution/rules",
+            get(list_distribution_rules).post(create_distribution_rule),
+        )
+        .route(
+            "/api/v1/distribution/rules/{id}",
+            put(update_distribution_rule).delete(delete_distribution_rule),
+        );
+
     // 合并管理路由并添加限流
     let admin_routes = admin_user_routes
         .merge(admin_account_routes)
         .merge(admin_tenant_routes)
         .merge(admin_settings_routes)
+        .merge(admin_distribution_routes)
         .layer(from_fn_with_state(state.clone(), rate_limit_middleware));
 
     // ==================== 5. 定价和账单 API ====================

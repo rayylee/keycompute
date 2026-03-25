@@ -431,7 +431,7 @@ fn create_openai_stream(
                 keycompute_provider_trait::StreamEvent::Done => {
                     // 流正常结束
                     let _ = billing.finalize_and_trigger_distribution(
-                        &ctx, &provider_name, account_id, &status, None, None
+                        &ctx, &provider_name, account_id, &status, ctx.user_id
                     ).await;
 
                     // 如果需要包含用量信息
@@ -462,7 +462,7 @@ fn create_openai_stream(
                 keycompute_provider_trait::StreamEvent::Error { message } => {
                     status = "error".to_string();
                     let _ = billing.finalize_and_trigger_distribution(
-                        &ctx, &provider_name, account_id, &status, None, None
+                        &ctx, &provider_name, account_id, &status, ctx.user_id
                     ).await;
 
                     let error_chunk = serde_json::json!({
@@ -487,7 +487,7 @@ fn create_openai_stream(
             );
             status = "incomplete".to_string();
             let _ = billing.finalize_and_trigger_distribution(
-                &ctx, &provider_name, account_id, &status, None, None
+                &ctx, &provider_name, account_id, &status, ctx.user_id
             ).await;
         }
     }

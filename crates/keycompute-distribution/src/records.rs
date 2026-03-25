@@ -147,6 +147,7 @@ impl DistributionService {
                 beneficiary_id: record.beneficiary_id,
                 share_amount: decimal_to_bigdecimal(&record.share_amount),
                 share_ratio: decimal_to_bigdecimal(&record.share_ratio),
+                level: record.level.clone(),
             };
 
             match keycompute_db::DistributionRecord::create(pool, &req).await {

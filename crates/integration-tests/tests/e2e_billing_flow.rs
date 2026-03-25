@@ -349,8 +349,7 @@ async fn test_billing_triggers_distribution() {
             "openai",
             uuid::Uuid::new_v4(),
             "success",
-            Some(uuid::Uuid::new_v4()), // level1 beneficiary
-            Some(uuid::Uuid::new_v4()), // level2 beneficiary
+            request_context.user_id, // 使用 user_id 从数据库查询推荐关系
         )
         .await;
 
