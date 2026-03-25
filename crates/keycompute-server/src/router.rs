@@ -25,6 +25,8 @@ use crate::{
         delete_user,
         // 认证相关
         forgot_password_handler,
+        // Distribution 分销
+        generate_invite_link,
         get_billing_stats,
         // 用户自服务
         get_current_user,
@@ -33,6 +35,7 @@ use crate::{
         get_execution_stats,
         get_gateway_status,
         get_my_distribution_earnings,
+        get_my_referral_code,
         get_my_referrals,
         get_my_usage,
         get_my_usage_stats,
@@ -129,6 +132,12 @@ pub fn create_router(state: AppState) -> Router {
             get(get_my_distribution_earnings),
         )
         .route("/api/v1/me/distribution/referrals", get(get_my_referrals))
+        // 推荐码和邀请链接
+        .route("/api/v1/me/referral/code", get(get_my_referral_code))
+        .route(
+            "/api/v1/me/referral/invite-link",
+            post(generate_invite_link),
+        )
         .layer(from_fn_with_state(state.clone(), rate_limit_middleware));
 
     // ==================== 4. 管理功能 API（需要 Admin 权限） ====================

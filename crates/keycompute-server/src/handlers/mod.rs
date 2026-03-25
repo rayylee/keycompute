@@ -28,9 +28,9 @@ pub use openai::{
 
 // Distribution 分销管理
 pub use distribution::{
-    create_distribution_rule, delete_distribution_rule, get_distribution_stats,
-    get_my_distribution_earnings, get_my_referrals, list_distribution_records,
-    list_distribution_rules, update_distribution_rule,
+    create_distribution_rule, delete_distribution_rule, generate_invite_link,
+    get_distribution_stats, get_my_distribution_earnings, get_my_referral_code, get_my_referrals,
+    list_distribution_records, list_distribution_rules, update_distribution_rule,
 };
 
 // 用户自服务

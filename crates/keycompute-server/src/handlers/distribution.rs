@@ -161,6 +161,100 @@ pub struct UserDistributionEarningsResponse {
     pub level2_referrals: i64,
 }
 
+/// 推荐码响应
+#[derive(Debug, Serialize)]
+pub struct ReferralCodeResponse {
+    /// 用户 ID（作为推荐码）
+    pub referral_code: String,
+    /// 推荐链接
+    pub invite_link: String,
+    /// 一级推荐人数
+    pub level1_count: i64,
+    /// 二级推荐人数
+    pub level2_count: i64,
+}
+
+/// 生成邀请链接请求
+#[derive(Debug, Deserialize)]
+pub struct GenerateInviteLinkRequest {
+    /// 自定义来源标识（可选，用于追踪不同渠道）
+    pub source: Option<String>,
+}
+
+/// 邀请链接响应
+#[derive(Debug, Serialize)]
+pub struct InviteLinkResponse {
+    /// 完整邀请链接
+    pub invite_link: String,
+    /// 推荐码
+    pub referral_code: String,
+    /// 短链接（可选）
+    pub short_link: Option<String>,
+    /// 过期时间（可选）
+    pub expires_at: Option<String>,
+}
+
+/// 获取我的推荐码和邀请链接
+///
+/// GET /api/v1/me/referral/code
+pub async fn get_my_referral_code(
+    auth: AuthExtractor,
+    State(state): State<AppState>,
+) -> Result<Json<ReferralCodeResponse>> {
+    let pool = state
+        .pool
+        .as_ref()
+        .ok_or_else(|| ApiError::Internal("Database not available".to_string()))?;
+
+    // 获取推荐统计
+    let referral_stats = keycompute_db::UserReferral::get_stats_by_referrer(pool, auth.user_id)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Database error: {}", e)))?;
+
+    // 构建邀请链接
+    // 格式: https://<domain>/register?ref=<user_id>
+    let base_url =
+        std::env::var("APP_BASE_URL").unwrap_or_else(|_| "https://app.keycompute.com".to_string());
+    let invite_link = format!("{}/register?ref={}", base_url, auth.user_id);
+
+    Ok(Json(ReferralCodeResponse {
+        referral_code: auth.user_id.to_string(),
+        invite_link,
+        level1_count: referral_stats.level1_count,
+        level2_count: referral_stats.level2_count,
+    }))
+}
+
+/// 生成邀请链接（支持自定义来源）
+///
+/// POST /api/v1/me/referral/invite-link
+pub async fn generate_invite_link(
+    auth: AuthExtractor,
+    State(_state): State<AppState>,
+    Json(req): Json<GenerateInviteLinkRequest>,
+) -> Result<Json<InviteLinkResponse>> {
+    // 构建基础邀请链接
+    let base_url =
+        std::env::var("APP_BASE_URL").unwrap_or_else(|_| "https://app.keycompute.com".to_string());
+
+    // 如果有来源标识，添加到链接中
+    let invite_link = if let Some(source) = &req.source {
+        format!(
+            "{}/register?ref={}&source={}",
+            base_url, auth.user_id, source
+        )
+    } else {
+        format!("{}/register?ref={}", base_url, auth.user_id)
+    };
+
+    Ok(Json(InviteLinkResponse {
+        invite_link,
+        referral_code: auth.user_id.to_string(),
+        short_link: None, // 可以集成短链接服务
+        expires_at: None, // 可以添加过期时间
+    }))
+}
+
 /// 推荐人信息
 #[derive(Debug, Serialize)]
 pub struct ReferralInfo {
