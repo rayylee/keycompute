@@ -12,6 +12,7 @@ use axum::{
     Json,
     extract::{Path, State},
 };
+use keycompute_auth::ProduceAiKeyValidator;
 use keycompute_db::models::{
     api_key::{CreateProduceAiKeyRequest, ProduceAiKey},
     usage_log::UsageLog,
@@ -19,7 +20,6 @@ use keycompute_db::models::{
 };
 use rust_decimal::prelude::ToPrimitive;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 /// 当前用户信息响应
@@ -182,23 +182,6 @@ pub struct CreateApiKeyRequest {
     pub name: String,
 }
 
-/// 生成 API Key
-fn generate_api_key() -> String {
-    // 生成类似 sk-xxxxxxxxxxxxxxxx 格式的 API Key
-    let random_uuid = Uuid::new_v4();
-    format!(
-        "sk-{}",
-        random_uuid.to_string().replace("-", "").to_lowercase()
-    )
-}
-
-/// 计算 API Key 的哈希值
-fn hash_api_key(key: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(key.as_bytes());
-    format!("{:x}", hasher.finalize())
-}
-
 /// 创建 API Key
 ///
 /// POST /api/v1/keys
@@ -212,9 +195,9 @@ pub async fn create_api_key(
         .as_ref()
         .ok_or_else(|| ApiError::Internal("Database not configured".to_string()))?;
 
-    // 生成新的 API Key
-    let new_key = generate_api_key();
-    let key_hash = hash_api_key(&new_key);
+    // 使用统一的 API Key 生成方法（格式：sk- + 48字符 = 51字符）
+    let new_key = ProduceAiKeyValidator::generate_key();
+    let key_hash = ProduceAiKeyValidator::hash_key(&new_key);
     let key_preview = format!("{}****", &new_key[..8.min(new_key.len())]);
 
     let create_req = CreateProduceAiKeyRequest {
