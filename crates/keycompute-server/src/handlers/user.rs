@@ -12,6 +12,7 @@ use axum::{
     Json,
     extract::{Path, State},
 };
+use chrono::{Duration, Utc};
 use keycompute_auth::{PasswordHasher, PasswordValidator, ProduceAiKeyValidator};
 use keycompute_db::models::{
     api_key::{CreateProduceAiKeyRequest, ProduceAiKey},
@@ -191,6 +192,7 @@ pub struct ApiKeyInfo {
     pub created_at: String,
     pub last_used_at: Option<String>,
     pub is_active: bool,
+    pub expires_at: Option<String>,
 }
 
 /// 列出我的 API Keys
@@ -220,6 +222,7 @@ pub async fn list_my_api_keys(
             created_at: k.created_at.to_rfc3339(),
             last_used_at: k.last_used_at.map(|t| t.to_rfc3339()),
             is_active: !k.revoked,
+            expires_at: k.expires_at.map(|t| t.to_rfc3339()),
         })
         .collect();
 
@@ -229,12 +232,22 @@ pub async fn list_my_api_keys(
 /// 创建 API Key 请求
 #[derive(Debug, Deserialize)]
 pub struct CreateApiKeyRequest {
+    /// API Key 名称
     pub name: String,
+    /// 是否永不过期
+    /// - None 或 Some(false): 默认 6 个月后过期
+    /// - Some(true): 永不过期
+    #[serde(default)]
+    pub never_expires: bool,
 }
 
 /// 创建 API Key
 ///
 /// POST /api/v1/keys
+///
+/// 请求体：
+/// - name: API Key 名称
+/// - never_expires: 是否永不过期（默认 false，即 6 个月后过期）
 pub async fn create_api_key(
     auth: AuthExtractor,
     State(state): State<AppState>,
@@ -250,13 +263,20 @@ pub async fn create_api_key(
     let key_hash = ProduceAiKeyValidator::hash_key(&new_key);
     let key_preview = format!("{}****", &new_key[..8.min(new_key.len())]);
 
+    // 计算过期时间：默认 6 个月，never_expires=true 时永不过期
+    let expires_at = if req.never_expires {
+        None
+    } else {
+        Some(Utc::now() + Duration::days(180)) // 6 个月 ≈ 180 天
+    };
+
     let create_req = CreateProduceAiKeyRequest {
         tenant_id: auth.tenant_id,
         user_id: auth.user_id,
         name: req.name.clone(),
         produce_ai_key_hash: key_hash,
         produce_ai_key_preview: key_preview,
-        expires_at: None,
+        expires_at,
     };
 
     let saved_key = ProduceAiKey::create(pool, &create_req)
@@ -270,6 +290,8 @@ pub async fn create_api_key(
         "key_id": saved_key.id,
         "name": saved_key.name,
         "created_at": saved_key.created_at.to_rfc3339(),
+        "expires_at": saved_key.expires_at.map(|t| t.to_rfc3339()),
+        "never_expires": req.never_expires,
     })))
 }
 
