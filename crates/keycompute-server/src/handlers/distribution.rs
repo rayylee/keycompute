@@ -206,6 +206,9 @@ pub async fn get_my_referral_code(
         .as_ref()
         .ok_or_else(|| ApiError::Internal("Database not available".to_string()))?;
 
+    // 检查分销系统是否启用
+    check_distribution_enabled(pool).await?;
+
     // 获取推荐统计
     let referral_stats = keycompute_db::UserReferral::get_stats_by_referrer(pool, auth.user_id)
         .await
@@ -230,9 +233,17 @@ pub async fn get_my_referral_code(
 /// POST /api/v1/me/referral/invite-link
 pub async fn generate_invite_link(
     auth: AuthExtractor,
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Json(req): Json<GenerateInviteLinkRequest>,
 ) -> Result<Json<InviteLinkResponse>> {
+    let pool = state
+        .pool
+        .as_ref()
+        .ok_or_else(|| ApiError::Internal("Database not available".to_string()))?;
+
+    // 检查分销系统是否启用
+    check_distribution_enabled(pool).await?;
+
     // 构建基础邀请链接
     let base_url =
         std::env::var("APP_BASE_URL").unwrap_or_else(|_| "https://app.keycompute.com".to_string());
@@ -282,6 +293,23 @@ fn string_to_bigdecimal(value: &str) -> Result<BigDecimal> {
     value
         .parse()
         .map_err(|e| ApiError::BadRequest(format!("Invalid decimal: {}", e)))
+}
+
+/// 检查分销系统是否启用
+async fn check_distribution_enabled(pool: &sqlx::PgPool) -> Result<()> {
+    use keycompute_db::models::system_setting::setting_keys;
+
+    let enabled =
+        keycompute_db::SystemSetting::get_bool(pool, setting_keys::DISTRIBUTION_ENABLED, false)
+            .await;
+
+    if !enabled {
+        return Err(ApiError::Forbidden(
+            "Distribution system is not enabled".to_string(),
+        ));
+    }
+
+    Ok(())
 }
 
 // ==================== API Handlers ====================
@@ -374,6 +402,11 @@ pub async fn get_distribution_stats(
         .pool
         .as_ref()
         .ok_or_else(|| ApiError::Internal("Database not available".to_string()))?;
+
+    // 检查分销系统是否启用（普通用户）
+    if !auth.is_admin() {
+        check_distribution_enabled(pool).await?;
+    }
 
     // 获取当前用户的分销统计
     let stats = keycompute_db::DistributionRecord::get_stats_by_beneficiary(pool, auth.user_id)
@@ -622,6 +655,9 @@ pub async fn get_my_distribution_earnings(
         .as_ref()
         .ok_or_else(|| ApiError::Internal("Database not available".to_string()))?;
 
+    // 检查分销系统是否启用
+    check_distribution_enabled(pool).await?;
+
     // 获取分销统计
     let stats = keycompute_db::DistributionRecord::get_stats_by_beneficiary(pool, auth.user_id)
         .await
@@ -654,6 +690,9 @@ pub async fn get_my_referrals(
         .pool
         .as_ref()
         .ok_or_else(|| ApiError::Internal("Database not available".to_string()))?;
+
+    // 检查分销系统是否启用
+    check_distribution_enabled(pool).await?;
 
     // 获取一级推荐
     let level1_referrals = keycompute_db::UserReferral::find_by_level1_referrer(pool, auth.user_id)

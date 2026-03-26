@@ -79,10 +79,27 @@ pub async fn register_handler(
     State(state): State<AppState>,
     Json(req): Json<RegisterRequestJson>,
 ) -> Result<impl IntoResponse> {
+    use keycompute_db::models::system_setting::setting_keys;
+
     let pool = state
         .pool
         .as_ref()
         .ok_or_else(|| ApiError::Internal("Database not configured".into()))?;
+
+    // 检查是否允许注册
+    let allow_registration =
+        keycompute_db::SystemSetting::get_bool(pool, setting_keys::ALLOW_REGISTRATION, true).await;
+
+    if !allow_registration {
+        return Err(ApiError::Forbidden(
+            "New user registration is currently disabled".to_string(),
+        ));
+    }
+
+    // 获取默认用户配额
+    let default_quota =
+        keycompute_db::SystemSetting::get_decimal(pool, setting_keys::DEFAULT_USER_QUOTA, 10.0)
+            .await;
 
     let register_req = RegisterRequest {
         email: req.email,
@@ -97,6 +114,26 @@ pub async fn register_handler(
         .register(&register_req)
         .await
         .map_err(|e| ApiError::Auth(format!("Registration failed: {}", e)))?;
+
+    // 为新用户设置初始余额（默认配额）
+    if default_quota > 0.0 {
+        if let Err(e) =
+            initialize_user_balance(pool, response.user_id, response.tenant_id, default_quota).await
+        {
+            tracing::warn!(
+                user_id = %response.user_id,
+                quota = default_quota,
+                error = %e,
+                "Failed to initialize user balance"
+            );
+        } else {
+            tracing::info!(
+                user_id = %response.user_id,
+                quota = default_quota,
+                "User balance initialized with default quota"
+            );
+        }
+    }
 
     // 处理推荐关系
     if let Some(ref referral_code) = req.referral_code {
@@ -388,6 +425,56 @@ pub async fn resend_verification_handler(
                     .to_string(),
         }),
     ))
+}
+
+// ==================== 辅助函数 ====================
+
+/// 初始化用户余额
+///
+/// 为新用户设置初始余额（默认配额）
+async fn initialize_user_balance(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+    tenant_id: Uuid,
+    initial_balance: f64,
+) -> std::result::Result<(), sqlx::Error> {
+    use rust_decimal::Decimal;
+
+    let amount = Decimal::from_f64_retain(initial_balance).unwrap_or(Decimal::ZERO);
+
+    // 创建或更新余额记录
+    sqlx::query(
+        r#"
+        INSERT INTO user_balances (tenant_id, user_id, available_balance, total_recharged)
+        VALUES ($1, $2, $3, $3)
+        ON CONFLICT (user_id) DO UPDATE SET
+            available_balance = user_balances.available_balance + $3,
+            total_recharged = user_balances.total_recharged + $3,
+            updated_at = NOW()
+        "#,
+    )
+    .bind(tenant_id)
+    .bind(user_id)
+    .bind(amount)
+    .execute(pool)
+    .await?;
+
+    // 记录交易
+    sqlx::query(
+        r#"
+        INSERT INTO balance_transactions (
+            tenant_id, user_id, transaction_type, amount, balance_before, balance_after, description
+        )
+        VALUES ($1, $2, 'recharge', $3, 0, $3, 'Initial quota from system')
+        "#,
+    )
+    .bind(tenant_id)
+    .bind(user_id)
+    .bind(amount)
+    .execute(pool)
+    .await?;
+
+    Ok(())
 }
 
 #[cfg(test)]

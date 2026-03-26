@@ -91,8 +91,8 @@ use crate::{
         verify_reset_token_handler,
     },
     middleware::{
-        admin_auth_middleware, cors_layer, rate_limit_middleware, request_logger,
-        trace_id_middleware,
+        admin_auth_middleware, cors_layer, maintenance_mode_middleware, rate_limit_middleware,
+        request_logger, trace_id_middleware,
     },
     state::AppState,
 };
@@ -302,6 +302,11 @@ pub fn create_router(state: AppState) -> Router {
         .merge(admin_payment_routes)
         .merge(health_routes)
         .merge(public_settings_routes) // 公开设置路由
+        // 维护模式中间件（最外层，在其他中间件之前）
+        .layer(from_fn_with_state(
+            state.clone(),
+            maintenance_mode_middleware,
+        ))
         .layer(axum::middleware::from_fn(request_logger))
         .layer(axum::middleware::from_fn(trace_id_middleware))
         .layer(TraceLayer::new_for_http())

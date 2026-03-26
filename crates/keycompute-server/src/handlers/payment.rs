@@ -145,24 +145,55 @@ pub async fn create_payment_order(
     State(state): State<AppState>,
     Json(req): Json<CreatePaymentOrderRequest>,
 ) -> Result<Json<CreatePaymentOrderResponse>> {
+    use keycompute_db::models::system_setting::setting_keys;
+
     // 验证金额
     if req.amount <= Decimal::ZERO {
         return Err(ApiError::BadRequest("支付金额必须大于0".to_string()));
     }
 
-    // 验证金额上限（单笔最大10万元）
-    let max_amount = Decimal::new(100000, 0);
-    if req.amount > max_amount {
-        return Err(ApiError::BadRequest(
-            "单笔支付金额不能超过10万元".to_string(),
-        ));
-    }
-
     // 获取数据库连接池
-    let _pool = state
+    let pool = state
         .pool
         .as_ref()
         .ok_or(ApiError::Internal("数据库未配置".to_string()))?;
+
+    // 检查支付功能是否启用（目前只支持支付宝）
+    let alipay_enabled =
+        keycompute_db::SystemSetting::get_bool(pool, setting_keys::ALIPAY_ENABLED, false).await;
+
+    if !alipay_enabled {
+        return Err(ApiError::Forbidden("Payment is not enabled".to_string()));
+    }
+
+    // 验证金额范围
+    let min_amount =
+        keycompute_db::SystemSetting::get_decimal(pool, setting_keys::MIN_RECHARGE_AMOUNT, 1.0)
+            .await;
+    let max_amount = keycompute_db::SystemSetting::get_decimal(
+        pool,
+        setting_keys::MAX_RECHARGE_AMOUNT,
+        100000.0,
+    )
+    .await;
+
+    // 使用配置的最大金额
+    let max_amount = Decimal::from_f64_retain(max_amount).unwrap_or(Decimal::new(100000, 0));
+    let min_amount = Decimal::from_f64_retain(min_amount).unwrap_or(Decimal::new(1, 0));
+
+    if req.amount < min_amount {
+        return Err(ApiError::BadRequest(format!(
+            "支付金额不能低于{}元",
+            min_amount
+        )));
+    }
+
+    if req.amount > max_amount {
+        return Err(ApiError::BadRequest(format!(
+            "单笔支付金额不能超过{}元",
+            max_amount
+        )));
+    }
 
     // 获取支付服务
     let payment_service = state

@@ -338,6 +338,115 @@ pub fn extract_auth_from_extensions(req: &Request) -> Option<AuthExtractor> {
     req.extensions().get::<AuthExtractor>().cloned()
 }
 
+// ==================== 维护模式中间件 ====================
+
+/// 维护模式中间件
+///
+/// 检查系统是否处于维护模式：
+/// 1. 读取 system_settings 表中的 maintenance_mode 设置
+/// 2. 如果启用维护模式，返回 503 Service Unavailable
+/// 3. 管理员（admin 角色）可以绕过维护模式继续访问
+///
+/// # 排除路径
+/// 以下路径不受维护模式影响：
+/// - /health - 健康检查
+/// - /api/v1/settings/public - 公开设置（前端需要获取维护状态）
+/// - /api/v1/auth/login - 登录（管理员需要登录）
+///
+/// # 使用示例
+/// ```rust,ignore
+/// Router::new()
+///     .layer(from_fn_with_state(state.clone(), maintenance_mode_middleware));
+/// ```
+pub async fn maintenance_mode_middleware(
+    State(state): State<AppState>,
+    req: Request,
+    next: Next,
+) -> Response {
+    use keycompute_db::models::system_setting::setting_keys;
+
+    // 排除不需要维护模式检查的路径
+    let path = req.uri().path();
+    let excluded_paths = [
+        "/health",
+        "/api/v1/settings/public",
+        "/api/v1/auth/login",
+        "/api/v1/auth/refresh-token",
+    ];
+
+    if excluded_paths.iter().any(|p| path.starts_with(p)) {
+        return next.run(req).await;
+    }
+
+    // 检查维护模式状态
+    let is_maintenance = if let Some(pool) = state.pool.as_ref() {
+        match keycompute_db::SystemSetting::get_bool(pool, setting_keys::MAINTENANCE_MODE, false)
+            .await
+        {
+            true => true,
+            false => false,
+        }
+    } else {
+        false // 无数据库连接时不启用维护模式
+    };
+
+    if !is_maintenance {
+        return next.run(req).await;
+    }
+
+    // 维护模式已启用，检查是否为管理员
+    // 从请求头提取认证信息
+    if let Some(auth_header) = req
+        .headers()
+        .get("Authorization")
+        .and_then(|h| h.to_str().ok())
+    {
+        if let Some(token) = auth_header.strip_prefix("Bearer ") {
+            // 验证 token
+            if let Ok(auth_context) = state.auth.verify_api_key(token).await {
+                if auth_context.role == "admin" {
+                    // 管理员绕过维护模式
+                    info!(
+                        user_id = %auth_context.user_id,
+                        "Admin bypassing maintenance mode"
+                    );
+                    return next.run(req).await;
+                }
+            }
+        }
+    }
+
+    // 获取维护消息
+    let maintenance_message = if let Some(pool) = state.pool.as_ref() {
+        keycompute_db::SystemSetting::get_string(
+            pool,
+            setting_keys::MAINTENANCE_MESSAGE,
+            "System is under maintenance. Please try again later.",
+        )
+        .await
+    } else {
+        "System is under maintenance. Please try again later.".to_string()
+    };
+
+    warn!(
+        path = %path,
+        "Request blocked due to maintenance mode"
+    );
+
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        serde_json::json!({
+            "error": {
+                "message": maintenance_message,
+                "type": "maintenance_mode",
+                "code": "service_unavailable"
+            }
+        })
+        .to_string(),
+    )
+        .into_response()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
