@@ -17,7 +17,6 @@ use keycompute_auth::Permission;
 use keycompute_ratelimit::{RateLimitConfig, RateLimitKey};
 use std::time::Instant;
 use tracing::{error, info, warn};
-use uuid::Uuid;
 
 /// 请求日志中间件
 pub async fn request_logger(req: Request, next: Next) -> Response {
