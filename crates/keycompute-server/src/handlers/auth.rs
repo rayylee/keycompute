@@ -9,7 +9,7 @@ use crate::{
 use axum::{
     Json,
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
 };
 use keycompute_auth::{
@@ -19,6 +19,57 @@ use keycompute_auth::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
+
+// ============================================================================
+// 辅助函数
+// ============================================================================
+
+/// 从请求头中提取客户端 IP 地址
+///
+/// 优先级：X-Forwarded-For > X-Real-IP
+///
+/// # 参数
+/// - `headers`: HTTP 请求头
+///
+/// # 返回
+/// - 提取到的 IP 地址字符串，如果无法提取则返回 None
+fn extract_client_ip(headers: &HeaderMap) -> Option<String> {
+    // 1. 尝试从 X-Forwarded-For 获取（反向代理场景）
+    // X-Forwarded-For 格式: client, proxy1, proxy2
+    // 我们需要第一个（最左边的）IP
+    if let Some(forwarded) = headers.get("x-forwarded-for") {
+        if let Ok(value) = forwarded.to_str() {
+            if let Some(client_ip) = value.split(',').next() {
+                let ip = client_ip.trim();
+                if !ip.is_empty() {
+                    return Some(ip.to_string());
+                }
+            }
+        }
+    }
+
+    // 2. 尝试从 X-Real-IP 获取（Nginx 常用）
+    if let Some(real_ip) = headers.get("x-real-ip") {
+        if let Ok(value) = real_ip.to_str() {
+            let ip = value.trim();
+            if !ip.is_empty() {
+                return Some(ip.to_string());
+            }
+        }
+    }
+
+    // 3. 尝试从 CF-Connecting-IP 获取（Cloudflare 专用）
+    if let Some(cf_ip) = headers.get("cf-connecting-ip") {
+        if let Ok(value) = cf_ip.to_str() {
+            let ip = value.trim();
+            if !ip.is_empty() {
+                return Some(ip.to_string());
+            }
+        }
+    }
+
+    None
+}
 
 // ============================================================================
 // 请求/响应类型
@@ -188,6 +239,7 @@ pub async fn register_handler(
 /// POST /auth/login
 pub async fn login_handler(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<LoginRequestJson>,
 ) -> Result<impl IntoResponse> {
     let pool = state
@@ -204,7 +256,7 @@ pub async fn login_handler(
     let login_req = LoginRequest {
         email: req.email,
         password: req.password,
-        client_ip: None, // TODO: 从请求中提取
+        client_ip: extract_client_ip(&headers),
     };
 
     let service = keycompute_auth::LoginService::new(Arc::clone(pool), jwt_validator);
@@ -260,6 +312,7 @@ pub async fn verify_email_handler(
 /// POST /auth/forgot-password
 pub async fn forgot_password_handler(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<ForgotPasswordRequestJson>,
 ) -> Result<impl IntoResponse> {
     let pool = state
@@ -274,7 +327,7 @@ pub async fn forgot_password_handler(
     service
         .request_reset(&RequestPasswordResetRequest {
             email: req.email,
-            client_ip: None, // TODO: 从请求中提取
+            client_ip: extract_client_ip(&headers),
         })
         .await
         .map_err(|e| ApiError::Internal(format!("Password reset request failed: {}", e)))?;
