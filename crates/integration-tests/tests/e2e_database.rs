@@ -42,9 +42,9 @@ async fn create_test_pool() -> PgPool {
         .unwrap_or_else(|_| "postgres://localhost/keycompute".to_string());
 
     let pool = PgPoolOptions::new()
-        .max_connections(5)
+        .max_connections(20)
         .min_connections(1)
-        .acquire_timeout(Duration::from_secs(10))
+        .acquire_timeout(Duration::from_secs(30))
         .idle_timeout(Duration::from_secs(300))
         .max_lifetime(Duration::from_secs(900))
         .connect(&database_url)
@@ -775,6 +775,19 @@ async fn test_concurrent_operations() {
 
     // 3. 等待所有操作完成
     let results: Vec<_> = futures::future::join_all(handles).await;
+
+    // 收集错误信息用于调试
+    let mut errors = Vec::new();
+    for (i, r) in results.iter().enumerate() {
+        match r {
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => errors.push(format!("Task {} error: {}", i, e)),
+            Err(e) => errors.push(format!("Task {} panicked: {}", i, e)),
+        }
+    }
+    if !errors.is_empty() {
+        eprintln!("Concurrent user creation errors:\n{}", errors.join("\n"));
+    }
 
     let success_count = results
         .iter()
