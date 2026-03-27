@@ -8,10 +8,10 @@ edition = "2024"
 keycompute-types = { workspace = true }
 keycompute-db = { workspace = true }
 keycompute-auth = { workspace = true }
-keycompute-ratelimit = { workspace = true }
+keycompute-ratelimit = { workspace = true, features = ["redis"] }
 keycompute-pricing = { workspace = true }
 keycompute-routing = { workspace = true }
-keycompute-runtime = { workspace = true }
+keycompute-runtime = { workspace = true, features = ["redis"] }
 keycompute-billing = { workspace = true }
 keycompute-distribution = { workspace = true }
 keycompute-observability = { workspace = true }
