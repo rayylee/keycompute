@@ -66,6 +66,34 @@ impl RedisRateLimiter {
             .await
             .map_err(|e| KeyComputeError::Internal(format!("Redis connection error: {}", e)))
     }
+
+    /// Lua 脚本：原子地检查并记录请求
+    /// 返回 1 表示成功，0 表示限流
+    const CHECK_AND_RECORD_SCRIPT: &str = r#"
+        local key = KEYS[1]
+        local now = tonumber(ARGV[1])
+        local window_start = tonumber(ARGV[2])
+        local limit = tonumber(ARGV[3])
+        local member = ARGV[4]
+        local expire_secs = tonumber(ARGV[5])
+
+        -- 清理过期条目
+        redis.call('ZREMRANGEBYSCORE', key, 0, window_start)
+
+        -- 获取当前计数
+        local count = redis.call('ZCARD', key)
+
+        -- 检查是否超限
+        if count >= limit then
+            return 0
+        end
+
+        -- 添加新条目
+        redis.call('ZADD', key, now, member)
+        redis.call('EXPIRE', key, expire_secs)
+
+        return 1
+    "#;
 }
 
 #[async_trait]
@@ -146,6 +174,44 @@ impl RateLimiter for RedisRateLimiter {
             .map_err(|e| KeyComputeError::Internal(format!("Redis error: {}", e)))?;
 
         Ok(())
+    }
+
+    async fn check_and_record_with_config(
+        &self,
+        key: &RateLimitKey,
+        config: &crate::RateLimitConfig,
+    ) -> Result<()> {
+        let mut conn = self.get_conn().await?;
+        let redis_key = self.build_key(key);
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let window_start = now - self.window_size.as_secs() as i64;
+        let unique_member = format!("{}:{}", now, Uuid::new_v4().simple());
+        let expire_secs = self.window_size.as_secs() * 2;
+
+        // 使用 Lua 脚本原子执行检查和记录
+        let result: i64 = redis::cmd("EVAL")
+            .arg(Self::CHECK_AND_RECORD_SCRIPT)
+            .arg(1)
+            .arg(&redis_key)
+            .arg(now)
+            .arg(window_start)
+            .arg(config.rpm_limit as i64)
+            .arg(&unique_member)
+            .arg(expire_secs as i64)
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| KeyComputeError::Internal(format!("Redis error: {}", e)))?;
+
+        if result == 1 {
+            Ok(())
+        } else {
+            Err(KeyComputeError::RateLimitExceeded)
+        }
     }
 
     async fn record_tokens(&self, _key: &RateLimitKey, _tokens: u32) -> Result<()> {

@@ -149,6 +149,20 @@ pub trait RateLimiter: Send + Sync + std::fmt::Debug {
     /// 记录请求（通过后调用）
     async fn record(&self, key: &RateLimitKey) -> Result<()>;
 
+    /// 原子地检查并记录请求（使用租户特定限制）
+    ///
+    /// 默认实现先检查再记录，非原子操作。分布式场景应覆盖此方法。
+    async fn check_and_record_with_config(
+        &self,
+        key: &RateLimitKey,
+        config: &RateLimitConfig,
+    ) -> Result<()> {
+        if !self.check_with_config(key, config).await? {
+            return Err(KeyComputeError::RateLimitExceeded);
+        }
+        self.record(key).await
+    }
+
     /// 记录 Token 使用量
     async fn record_tokens(&self, key: &RateLimitKey, tokens: u32) -> Result<()>;
 
@@ -358,27 +372,18 @@ impl RateLimitService {
         key: &RateLimitKey,
         config: &RateLimitConfig,
     ) -> Result<()> {
-        // 检查 RPM 限制
-        if !self.limiter.check_with_config(key, config).await? {
-            tracing::warn!(
-                tenant_id = %key.tenant_id,
-                user_id = %key.user_id,
-                rpm_limit = config.rpm_limit,
-                "RPM limit exceeded"
-            );
-            return Err(KeyComputeError::RateLimitExceeded);
-        }
-
-        // 记录请求
-        self.limiter.record(key).await?;
-
-        tracing::debug!(
-            tenant_id = %key.tenant_id,
-            user_id = %key.user_id,
-            rpm_limit = config.rpm_limit,
-            "Rate limit check passed"
-        );
-        Ok(())
+        // 使用 limiter 的原子方法（分布式后端会覆盖实现）
+        self.limiter.check_and_record_with_config(key, config).await.map_err(|e| {
+            if matches!(e, KeyComputeError::RateLimitExceeded) {
+                tracing::warn!(
+                    tenant_id = %key.tenant_id,
+                    user_id = %key.user_id,
+                    rpm_limit = config.rpm_limit,
+                    "RPM limit exceeded"
+                );
+            }
+            e
+        })
     }
 
     /// 仅检查不限流
