@@ -1,7 +1,12 @@
-//! This crate contains all shared UI for the workspace.
+//! KeyCompute 共享 UI 组件库
+//!
+//! # 模块结构
+//! - `layout`  — 应用布局（AppShell、Sidebar、Header、Footer）
+//! - `icons`   — 内联 SVG 图标组件
 
-mod hero;
-pub use hero::Hero;
+pub mod icons;
+pub mod layout;
 
-mod navbar;
-pub use navbar::Navbar;
+// Re-export 最常用的布局类型，方便外部直接 `use ui::AppShell`
+pub use layout::{AppShell, Footer, Header, NavItem, NavSection, Sidebar};
+pub use layout::app_shell::UiState;

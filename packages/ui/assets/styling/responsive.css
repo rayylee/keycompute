@@ -1,0 +1,114 @@
+/* KeyCompute UI - 响应式适配 */
+
+/* ── 断点定义
+   Mobile  : < 640px
+   Tablet  : 640px  - 1024px
+   Desktop : 1024px - 1280px
+   Large   : > 1280px
+──────────────────────────────────────── */
+
+/* ── Mobile (< 640px) ───────────────────────── */
+@media (max-width: 639px) {
+  /* 隐藏侧边栏，改为抽屉式 */
+  .sidebar {
+    transform: translateX(-100%);
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+    box-shadow: var(--shadow-xl);
+  }
+
+  /* 主区域占满全宽 */
+  .main-area {
+    margin-left: 0 !important;
+  }
+
+  /* 显示底部导航 */
+  .bottom-nav {
+    display: block;
+  }
+
+  /* 内容区为底部导航留空间 */
+  .content-area {
+    padding-bottom: calc(var(--bottom-nav-height) + var(--space-md));
+  }
+
+  /* 卡片全宽单列 */
+  .card-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* 简化 header */
+  .header {
+    padding: 0 var(--space-md);
+  }
+
+  .header-page-title {
+    font-size: var(--font-size-base);
+  }
+}
+
+/* ── Tablet (640px - 1023px) ────────────────── */
+@media (min-width: 640px) and (max-width: 1023px) {
+  /* 侧边栏默认折叠 */
+  .sidebar {
+    width: var(--sidebar-collapsed);
+  }
+
+  .main-area {
+    margin-left: var(--sidebar-collapsed);
+  }
+
+  /* 双列卡片布局 */
+  .card-grid-3,
+  .card-grid-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* ── Desktop (>= 1024px) ────────────────────── */
+@media (min-width: 1024px) {
+  /* 侧边栏遮罩在桌面上始终不显示 */
+  .sidebar-overlay {
+    display: none !important;
+  }
+
+  .bottom-nav {
+    display: none !important;
+  }
+}
+
+/* ── Large (>= 1280px) ──────────────────────── */
+@media (min-width: 1280px) {
+  .content-area {
+    padding: var(--space-xl);
+  }
+}
+
+/* ── 通用卡片网格 ───────────────────────────── */
+.card-grid {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.card-grid-2 { grid-template-columns: repeat(2, 1fr); }
+.card-grid-3 { grid-template-columns: repeat(3, 1fr); }
+.card-grid-4 { grid-template-columns: repeat(4, 1fr); }
+
+@media (max-width: 639px) {
+  .card-grid-2,
+  .card-grid-3,
+  .card-grid-4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── 隐藏辅助类 ─────────────────────────────── */
+.hide-mobile  { display: none; }
+.hide-tablet  { }
+.hide-desktop { }
+
+@media (min-width: 640px)  { .hide-mobile  { display: revert; } }
+@media (min-width: 640px) and (max-width: 1023px) { .hide-tablet  { display: none; } }
+@media (min-width: 1024px) { .hide-desktop { display: none; } }
