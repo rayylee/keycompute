@@ -29,11 +29,19 @@ pub fn Header(
 
     // 主题图标：light 显示月亮（切换到 dark），dark 显示太阳（切换到 light）
     let is_dark = theme() == "dark";
-    let theme_title = if is_dark { "切换到亮色主题" } else { "切换到暗色主题" };
+    let theme_title = if is_dark {
+        "切换到亮色主题"
+    } else {
+        "切换到暗色主题"
+    };
 
     let lang_val = lang();
     let lang_label = if lang_val == "zh" { "EN" } else { "中" };
-    let lang_title = if lang_val == "zh" { "Switch to English" } else { "切换到中文" };
+    let lang_title = if lang_val == "zh" {
+        "Switch to English"
+    } else {
+        "切换到中文"
+    };
 
     let title = page_title.clone();
 

@@ -4,11 +4,7 @@ use dioxus::prelude::*;
 macro_rules! svg_icon {
     ($name:ident, $path:literal) => {
         #[component]
-        pub fn $name(
-            size: Option<u32>,
-            color: Option<String>,
-            class: Option<String>,
-        ) -> Element {
+        pub fn $name(size: Option<u32>, color: Option<String>, class: Option<String>) -> Element {
             let size = size.unwrap_or(20);
             let color = color.unwrap_or_else(|| "currentColor".to_string());
             let class = class.unwrap_or_default();
@@ -73,10 +69,7 @@ svg_icon!(
 );
 
 // ── 月亮（暗色） ───────────────────────────────────────────
-svg_icon!(
-    IconMoon,
-    "<path d='M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z'/>"
-);
+svg_icon!(IconMoon, "<path d='M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z'/>");
 
 // ── 地球（语言） ───────────────────────────────────────────
 svg_icon!(
@@ -85,20 +78,11 @@ svg_icon!(
 );
 
 // ── 折叠箭头 ──────────────────────────────────────────────
-svg_icon!(
-    IconChevronLeft,
-    "<path d='m15 18-6-6 6-6'/>"
-);
+svg_icon!(IconChevronLeft, "<path d='m15 18-6-6 6-6'/>");
 
-svg_icon!(
-    IconChevronRight,
-    "<path d='m9 18 6-6-6-6'/>"
-);
+svg_icon!(IconChevronRight, "<path d='m9 18 6-6-6-6'/>");
 
-svg_icon!(
-    IconChevronDown,
-    "<path d='m6 9 6 6 6-6'/>"
-);
+svg_icon!(IconChevronDown, "<path d='m6 9 6 6 6-6'/>");
 
 // ── 用量/图表 ──────────────────────────────────────────────
 svg_icon!(
@@ -143,16 +127,10 @@ svg_icon!(
 );
 
 // ── 系统诊断 ──────────────────────────────────────────────
-svg_icon!(
-    IconActivity,
-    "<path d='M22 12h-4l-3 9L9 3l-3 9H2'/>"
-);
+svg_icon!(IconActivity, "<path d='M22 12h-4l-3 9L9 3l-3 9H2'/>");
 
 // ── 关闭/删除 ──────────────────────────────────────────────
-svg_icon!(
-    IconX,
-    "<path d='M18 6 6 18'/><path d='m6 6 12 12'/>"
-);
+svg_icon!(IconX, "<path d='M18 6 6 18'/><path d='m6 6 12 12'/>");
 
 // ── 复制 ──────────────────────────────────────────────────
 svg_icon!(
@@ -167,10 +145,7 @@ svg_icon!(
 );
 
 // ── 加号 ──────────────────────────────────────────────────
-svg_icon!(
-    IconPlus,
-    "<path d='M5 12h14'/><path d='M12 5v14'/>"
-);
+svg_icon!(IconPlus, "<path d='M5 12h14'/><path d='M12 5v14'/>");
 
 // ── 搜索 ──────────────────────────────────────────────────
 svg_icon!(

@@ -1,0 +1,40 @@
+use client_api::error::Result;
+use client_api::{
+    PaymentApi,
+    api::payment::{
+        BalanceResponse, CreatePaymentOrderRequest, PaymentOrderResponse, PaymentOrderSummary,
+        PaymentQueryParams,
+    },
+};
+
+use super::api_client::get_client;
+
+pub async fn get_balance(token: &str) -> Result<BalanceResponse> {
+    let client = get_client();
+    PaymentApi::new(&client).get_my_balance(token).await
+}
+
+pub async fn list_orders(
+    params: Option<PaymentQueryParams>,
+    token: &str,
+) -> Result<Vec<PaymentOrderSummary>> {
+    let client = get_client();
+    PaymentApi::new(&client)
+        .list_my_payment_orders(params.as_ref(), token)
+        .await
+}
+
+pub async fn get_order(id: &str, token: &str) -> Result<PaymentOrderResponse> {
+    let client = get_client();
+    PaymentApi::new(&client).get_payment_order(id, token).await
+}
+
+pub async fn create_order(
+    req: CreatePaymentOrderRequest,
+    token: &str,
+) -> Result<PaymentOrderResponse> {
+    let client = get_client();
+    PaymentApi::new(&client)
+        .create_payment_order(&req, token)
+        .await
+}

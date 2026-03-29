@@ -1,0 +1,25 @@
+use client_api::error::Result;
+use client_api::{SettingsApi, api::settings::SettingValue};
+use std::collections::HashMap;
+
+use super::api_client::get_client;
+
+pub async fn get_all(token: &str) -> Result<HashMap<String, SettingValue>> {
+    let client = get_client();
+    SettingsApi::new(&client).get_system_settings(token).await
+}
+
+pub async fn update_all(
+    settings: HashMap<String, serde_json::Value>,
+    token: &str,
+) -> Result<HashMap<String, SettingValue>> {
+    let client = get_client();
+    SettingsApi::new(&client)
+        .update_system_settings(&settings, token)
+        .await
+}
+
+pub async fn get_public() -> Result<HashMap<String, SettingValue>> {
+    let client = get_client();
+    SettingsApi::new(&client).get_public_settings().await
+}

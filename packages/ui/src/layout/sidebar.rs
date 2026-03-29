@@ -1,9 +1,8 @@
 use dioxus::prelude::*;
 
 use crate::icons::{
-    IconActivity, IconBarChart, IconBuilding, IconHome, IconKey, IconReceipt, IconServer,
-    IconSettings, IconShare, IconTag, IconUser, IconUsers, IconWallet, IconChevronLeft,
-    IconChevronRight,
+    IconActivity, IconBarChart, IconBuilding, IconChevronLeft, IconChevronRight, IconHome, IconKey,
+    IconReceipt, IconServer, IconSettings, IconShare, IconTag, IconUser, IconUsers, IconWallet,
 };
 
 /// 单条导航项
@@ -144,8 +143,8 @@ pub fn Sidebar(
 /// 单条导航项组件（内部组件）
 #[component]
 fn SidebarNavItem(item: NavItem, collapsed: bool, current_path: String) -> Element {
-    let is_active = current_path == item.path
-        || (item.path != "/" && current_path.starts_with(&item.path));
+    let is_active =
+        current_path == item.path || (item.path != "/" && current_path.starts_with(&item.path));
 
     let item_class = if is_active {
         "sidebar-item active"
@@ -154,22 +153,26 @@ fn SidebarNavItem(item: NavItem, collapsed: bool, current_path: String) -> Eleme
     };
 
     let icon_el = match item.icon {
-        NavIcon::Home     => rsx! { IconHome { size: 20 } },
-        NavIcon::Key      => rsx! { IconKey { size: 20 } },
-        NavIcon::Wallet   => rsx! { IconWallet { size: 20 } },
-        NavIcon::Users    => rsx! { IconUsers { size: 20 } },
+        NavIcon::Home => rsx! { IconHome { size: 20 } },
+        NavIcon::Key => rsx! { IconKey { size: 20 } },
+        NavIcon::Wallet => rsx! { IconWallet { size: 20 } },
+        NavIcon::Users => rsx! { IconUsers { size: 20 } },
         NavIcon::Settings => rsx! { IconSettings { size: 20 } },
         NavIcon::BarChart => rsx! { IconBarChart { size: 20 } },
-        NavIcon::Receipt  => rsx! { IconReceipt { size: 20 } },
-        NavIcon::Share    => rsx! { IconShare { size: 20 } },
-        NavIcon::User     => rsx! { IconUser { size: 20 } },
-        NavIcon::Server   => rsx! { IconServer { size: 20 } },
-        NavIcon::Tag      => rsx! { IconTag { size: 20 } },
+        NavIcon::Receipt => rsx! { IconReceipt { size: 20 } },
+        NavIcon::Share => rsx! { IconShare { size: 20 } },
+        NavIcon::User => rsx! { IconUser { size: 20 } },
+        NavIcon::Server => rsx! { IconServer { size: 20 } },
+        NavIcon::Tag => rsx! { IconTag { size: 20 } },
         NavIcon::Building => rsx! { IconBuilding { size: 20 } },
         NavIcon::Activity => rsx! { IconActivity { size: 20 } },
     };
 
-    let title_attr = if collapsed { item.label.clone() } else { String::new() };
+    let title_attr = if collapsed {
+        item.label.clone()
+    } else {
+        String::new()
+    };
     let label = item.label.clone();
     let path = item.path.clone();
 
