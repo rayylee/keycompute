@@ -1,12 +1,15 @@
 use dioxus::prelude::*;
 use ui::{Badge, BadgeVariant, Table, TableHead};
 
+use crate::router::Route;
 use crate::services::payment_service;
 use crate::stores::auth_store::AuthStore;
 
 #[component]
 pub fn PaymentsOverview() -> Element {
     let auth_store = use_context::<AuthStore>();
+
+    let nav = use_navigator();
 
     let balance = use_resource(move || async move {
         let token = auth_store.token().unwrap_or_default();
@@ -56,8 +59,12 @@ pub fn PaymentsOverview() -> Element {
                 class: "section",
                 div {
                     class: "section-header",
-                    h2 { class: "section-title", "充值记录" }
-                    a { class: "btn btn-primary", href: "/payments/recharge", "立即充値" }
+                    h2 { class: "section-title", "充値记录" }
+                    button {
+                        class: "btn btn-primary",
+                        onclick: move |_| { nav.push(Route::Recharge {}); },
+                        "立即充値"
+                    }
                 }
                 match orders() {
                     None => rsx! { div { class: "loading-state", "加载中..." } },

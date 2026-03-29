@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 
+use crate::router::Route;
 use crate::services::auth_service;
 
 #[component]
@@ -8,6 +9,8 @@ pub fn ForgotPassword() -> Element {
     let mut loading = use_signal(|| false);
     let mut sent = use_signal(|| false);
     let mut error_msg = use_signal(|| Option::<String>::None);
+
+    let nav = use_navigator();
 
     let on_submit = move |evt: Event<FormData>| {
         evt.prevent_default();
@@ -76,7 +79,12 @@ pub fn ForgotPassword() -> Element {
 
                 div {
                     class: "auth-footer",
-                    a { class: "link", href: "/auth/login", "返回登录" }
+                    button {
+                        class: "link",
+                        r#type: "button",
+                        onclick: move |_| { nav.push(Route::Login {}); },
+                        "返回登录"
+                    }
                 }
             }
         }

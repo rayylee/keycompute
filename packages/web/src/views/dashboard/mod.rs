@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 
+use crate::router::Route;
 use crate::services::{payment_service, usage_service};
 use crate::stores::auth_store::AuthStore;
 use crate::stores::user_store::UserStore;
@@ -97,9 +98,9 @@ pub fn Dashboard() -> Element {
                 h2 { class: "section-title", "快速入口" }
                 div {
                     class: "quick-links",
-                    QuickLink { href: "/api-keys", label: "管理 API Key" }
-                    QuickLink { href: "/payments", label: "充値余额" }
-                    QuickLink { href: "/user/profile", label: "账户设置" }
+                    QuickLink { route: Route::ApiKeyList {}, label: "管理 API Key" }
+                    QuickLink { route: Route::PaymentsOverview {}, label: "充値余额" }
+                    QuickLink { route: Route::UserProfile {}, label: "账户设置" }
                 }
             }
         }
@@ -125,11 +126,12 @@ fn StatCard(title: String, value: String, label: String, icon: String) -> Elemen
 }
 
 #[component]
-fn QuickLink(href: String, label: String) -> Element {
+fn QuickLink(route: Route, label: String) -> Element {
+    let nav = use_navigator();
     rsx! {
-        a {
+        button {
             class: "quick-link-card",
-            href: "{href}",
+            onclick: move |_| { nav.push(route.clone()); },
             "{label}"
         }
     }

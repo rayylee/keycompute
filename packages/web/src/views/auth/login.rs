@@ -94,9 +94,10 @@ pub fn Login() -> Element {
                     }
                     div {
                         class: "form-actions",
-                        a {
+                        button {
                             class: "link",
-                            href: "/auth/forgot-password",
+                            r#type: "button",
+                            onclick: move |_| { nav.push(Route::ForgotPassword {}); },
                             "忘记密码？"
                         }
                     }
@@ -111,9 +112,10 @@ pub fn Login() -> Element {
                 div {
                     class: "auth-footer",
                     "还没有账户？"
-                    a {
+                    button {
                         class: "link",
-                        href: "/auth/register",
+                        r#type: "button",
+                        onclick: move |_| { nav.push(Route::Register {}); },
                         " 立即注册"
                     }
                 }

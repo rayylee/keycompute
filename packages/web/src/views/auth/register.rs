@@ -113,7 +113,12 @@ pub fn Register() -> Element {
                 div {
                     class: "auth-footer",
                     "已有账户？"
-                    a { class: "link", href: "/auth/login", " 立即登录" }
+                    button {
+                        class: "link",
+                        r#type: "button",
+                        onclick: move |_| { nav.push(Route::Login {}); },
+                        " 立即登录"
+                    }
                 }
             }
         }

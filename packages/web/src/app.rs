@@ -117,6 +117,7 @@ pub fn AppLayout() -> Element {
         AppShell {
             nav_sections,
             user_name,
+            current_path: use_route::<Route>().to_string(),
             Toast {}
             Outlet::<Route> {}
         }

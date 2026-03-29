@@ -35,6 +35,7 @@ pub fn AppShell(
     #[props(default)] nav_sections: Vec<NavSection>,
     #[props(default)] page_title: String,
     #[props(default)] user_name: String,
+    #[props(default)] current_path: String,
     children: Element,
 ) -> Element {
     let sidebar_collapsed = use_signal(|| false);
@@ -120,6 +121,7 @@ pub fn AppShell(
                 sections: nav_sections.clone(),
                 collapsed: sidebar_collapsed,
                 mobile_open: sidebar_mobile_open,
+                current_path: current_path.clone(),
             }
 
             div { class: "{main_class}",
