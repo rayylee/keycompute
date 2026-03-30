@@ -185,7 +185,17 @@ fn SidebarNavItem(item: NavItem, collapsed: bool, current_path: String) -> Eleme
                 nav.push(path.as_str());
             },
             span { class: "sidebar-item-icon", {icon_el} }
-            span { class: "sidebar-item-label", "{label}" }
+            span { class: "sidebar-item-label",
+                "{label}"
+                // Admin 专属标记
+                if item.admin_only && !collapsed {
+                    span {
+                        class: "sidebar-admin-badge",
+                        style: "margin-left: 4px; font-size: 10px; padding: 1px 4px; border-radius: 3px; background: var(--warning-light, #fef3c7); color: var(--warning, #d97706); font-weight: 600;",
+                        "A"
+                    }
+                }
+            }
         }
     }
 }

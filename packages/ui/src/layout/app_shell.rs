@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
 use super::footer::Footer;
-use super::header::Header;
+use super::header::{Header, UserMenuAction};
 use super::sidebar::{NavSection, Sidebar};
 
 const VARIABLES_CSS: Asset = asset!("/assets/styling/variables.css");
@@ -30,12 +30,14 @@ pub struct UiState {
 /// - `page_title`：当前页面标题（显示在顶部栏）
 /// - `user_name`：当前登录用户名（显示头像首字母）
 /// - `children`：主内容区内容
+/// - `on_user_menu`：用户下拉菜单操作回调
 #[component]
 pub fn AppShell(
     #[props(default)] nav_sections: Vec<NavSection>,
     #[props(default)] page_title: String,
     #[props(default)] user_name: String,
     #[props(default)] current_path: String,
+    #[props(default)] on_user_menu: EventHandler<UserMenuAction>,
     children: Element,
 ) -> Element {
     let sidebar_collapsed = use_signal(|| false);
@@ -132,6 +134,7 @@ pub fn AppShell(
                     sidebar_mobile_open,
                     theme,
                     lang,
+                    on_user_menu,
                 }
 
                 main { class: "content-area",

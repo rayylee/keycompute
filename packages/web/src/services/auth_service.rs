@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use client_api::error::Result;
 use client_api::{
     AuthApi,

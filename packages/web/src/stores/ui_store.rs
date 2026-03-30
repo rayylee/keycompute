@@ -16,6 +16,7 @@ pub struct ToastMsg {
 }
 
 #[derive(Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum ToastKind {
     Success,
     Error,
@@ -23,6 +24,7 @@ pub enum ToastKind {
     Info,
 }
 
+#[allow(dead_code)]
 impl ToastKind {
     pub fn css_class(&self) -> &'static str {
         match self {

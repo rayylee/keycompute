@@ -10,7 +10,7 @@ use crate::stores::{
 };
 use crate::views::shared::Toast;
 use ui::layout::sidebar::NavIcon;
-use ui::{AppShell, NavItem, NavSection};
+use ui::{AppShell, NavItem, NavSection, UserMenuAction};
 
 /// 根组件：提供所有全局 context，挂载路由
 #[component]
@@ -48,7 +48,7 @@ pub fn App() -> Element {
 #[component]
 pub fn AppLayout() -> Element {
     let user_store = use_context::<UserStore>();
-    let auth_store = use_context::<AuthStore>();
+    let mut auth_store = use_context::<AuthStore>();
     let nav = use_navigator();
 
     // 同步检查认证状态：在渲染之前立即判断，未登录则渲染重定向占位符
@@ -146,6 +146,14 @@ pub fn AppLayout() -> Element {
             nav_sections,
             user_name,
             current_path: use_route::<Route>().to_string(),
+            on_user_menu: move |action: UserMenuAction| match action {
+                UserMenuAction::Profile => { nav.push(Route::UserProfile {}); }
+                UserMenuAction::Settings => { nav.push(Route::UserSettings {}); }
+                UserMenuAction::Logout => {
+                    auth_store.logout();
+                    nav.replace(Route::Login {});
+                }
+            },
             Toast {}
             Outlet::<Route> {}
         }

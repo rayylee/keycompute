@@ -63,7 +63,43 @@ pub fn PieChart(props: PieChartProps) -> Element {
     let title_text = props.title.clone();
     let pie_data = props.data.clone();
 
+    let _cleanup_id = props.id.clone();
+    use_drop(move || {
+        #[cfg(target_arch = "wasm32")]
+        {
+            use wasm_bindgen::JsCast;
+            if let Some(window) = web_sys::window() {
+                if let Some(doc) = window.document() {
+                    if let Some(el) = doc.get_element_by_id(&_cleanup_id) {
+                        // 通过 ECharts 全局 API 销毁实例
+                        let _ = js_sys::Reflect::get(&window, &"echarts".into())
+                            .ok()
+                            .and_then(|echarts| {
+                                js_sys::Reflect::get(&echarts, &"getInstanceByDom".into())
+                                    .ok()
+                                    .and_then(|get_fn| {
+                                        get_fn
+                                            .dyn_ref::<js_sys::Function>()
+                                            .and_then(|f| f.call1(&echarts, &el).ok())
+                                    })
+                                    .and_then(|instance| {
+                                        js_sys::Reflect::get(&instance, &"dispose".into())
+                                            .ok()
+                                            .and_then(|dispose| {
+                                                dispose
+                                                    .dyn_ref::<js_sys::Function>()
+                                                    .and_then(|f| f.call0(&instance).ok())
+                                            })
+                                    })
+                            });
+                    }
+                }
+            }
+        }
+    });
+
     use_effect(move || {
+        let id_clone = id.clone();
         let mut chart = Chart::new().legend(Legend::new().top("bottom"));
 
         if !title_text.is_empty() {
@@ -84,7 +120,7 @@ pub fn PieChart(props: PieChartProps) -> Element {
         chart = chart.series(pie);
 
         let renderer = WasmRenderer::new(width, height);
-        let _ = renderer.render(&id, &chart);
+        let _ = renderer.render(&id_clone, &chart);
     });
 
     rsx! {

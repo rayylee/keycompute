@@ -1,6 +1,20 @@
 use dioxus::prelude::*;
 
-use crate::icons::{IconBell, IconChevronDown, IconGlobe, IconMenu, IconMoon, IconSun};
+use crate::icons::{
+    IconBell, IconChevronDown, IconGlobe, IconLogOut, IconMenu, IconMoon, IconSettings, IconSun,
+    IconUser,
+};
+
+/// 用户下拉菜单项回调
+#[derive(Clone, Copy, PartialEq)]
+pub enum UserMenuAction {
+    /// 点击个人资料
+    Profile,
+    /// 点击设置
+    Settings,
+    /// 点击退出登录
+    Logout,
+}
 
 /// 顶部栏组件
 ///
@@ -11,6 +25,7 @@ use crate::icons::{IconBell, IconChevronDown, IconGlobe, IconMenu, IconMoon, Ico
 /// - `sidebar_mobile_open`：移动端侧边栏开关（Signal）
 /// - `theme`：当前主题（Signal<String>），值为 "light" / "dark" / "system"
 /// - `lang`：当前语言（Signal<String>），值为 "zh" / "en"
+/// - `on_user_menu`：用户下拉菜单项点击回调
 #[component]
 pub fn Header(
     #[props(default)] page_title: String,
@@ -19,6 +34,7 @@ pub fn Header(
     sidebar_mobile_open: Signal<bool>,
     theme: Signal<String>,
     lang: Signal<String>,
+    #[props(default)] on_user_menu: EventHandler<UserMenuAction>,
 ) -> Element {
     // 头像首字母
     let avatar_char = user_name
@@ -44,6 +60,9 @@ pub fn Header(
     };
 
     let title = page_title.clone();
+
+    // 下拉菜单展开状态
+    let mut dropdown_open = use_signal(|| false);
 
     rsx! {
         header { class: "header",
@@ -130,15 +149,90 @@ pub fn Header(
                     "{avatar_char}"
                 }
 
-                // 用户名 + 下拉箭头（桌面端）
-                button {
-                    class: "header-icon-btn hide-mobile",
-                    style: "gap: 4px; width: auto; padding: 0 4px;",
-                    span {
-                        style: "font-size: 13px; font-weight: 500; color: var(--text-primary); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
-                        "{user_name}"
+                // 用户名 + 下拉箭头（桌面端）- 带下拉菜单
+                div {
+                    class: "header-user-dropdown",
+                    style: "position: relative;",
+                    button {
+                        class: "header-icon-btn hide-mobile",
+                        style: "gap: 4px; width: auto; padding: 0 8px;",
+                        onclick: move |_| {
+                            let cur = dropdown_open();
+                            *dropdown_open.write() = !cur;
+                        },
+                        span {
+                            style: "font-size: 13px; font-weight: 500; color: var(--text-primary); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
+                            "{user_name}"
+                        }
+                        IconChevronDown {
+                            size: 16,
+                        }
                     }
-                    IconChevronDown { size: 16 }
+
+                    // 下拉菜单
+                    if dropdown_open() {
+                        div {
+                            class: "dropdown-menu",
+                            style: "position: absolute; top: 100%; right: 0; margin-top: 4px; min-width: 160px; background: var(--bg-card, white); border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; overflow: hidden;",
+
+                            // 个人资料
+                            button {
+                                class: "dropdown-item",
+                                style: "display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; border: none; background: none; cursor: pointer; font-size: 14px; color: var(--text-primary); text-align: left; transition: background 0.15s;",
+                                onmouseenter: move |e| { let _ = e; },
+                                onmouseleave: move |e| { let _ = e; },
+                                onclick: move |_| {
+                                    *dropdown_open.write() = false;
+                                    on_user_menu.call(UserMenuAction::Profile);
+                                },
+                                IconUser { size: 16 }
+                                span { "个人资料" }
+                            }
+
+                            // 设置
+                            button {
+                                class: "dropdown-item",
+                                style: "display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; border: none; background: none; cursor: pointer; font-size: 14px; color: var(--text-primary); text-align: left; transition: background 0.15s;",
+                                onmouseenter: move |e| { let _ = e; },
+                                onmouseleave: move |e| { let _ = e; },
+                                onclick: move |_| {
+                                    *dropdown_open.write() = false;
+                                    on_user_menu.call(UserMenuAction::Settings);
+                                },
+                                IconSettings { size: 16 }
+                                span { "账户设置" }
+                            }
+
+                            // 分隔线
+                            div {
+                                style: "height: 1px; background: var(--border-color, #e2e8f0); margin: 4px 0;"
+                            }
+
+                            // 退出登录
+                            button {
+                                class: "dropdown-item",
+                                style: "display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; border: none; background: none; cursor: pointer; font-size: 14px; color: var(--danger, #dc2626); text-align: left; transition: background 0.15s;",
+                                onmouseenter: move |e| { let _ = e; },
+                                onmouseleave: move |e| { let _ = e; },
+                                onclick: move |_| {
+                                    *dropdown_open.write() = false;
+                                    on_user_menu.call(UserMenuAction::Logout);
+                                },
+                                IconLogOut { size: 16 }
+                                span { "退出登录" }
+                            }
+                        }
+                    }
+                }
+
+                // 点击外部关闭下拉菜单覆盖层
+                if dropdown_open() {
+                    div {
+                        style: "position: fixed; inset: 0; z-index: 999;",
+                        onclick: move |_| {
+                            *dropdown_open.write() = false;
+                        },
+                    }
                 }
             }
         }

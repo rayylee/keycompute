@@ -6,6 +6,7 @@ pub use zh::ZH;
 
 /// 语言枚举
 #[derive(Clone, PartialEq, Default)]
+#[allow(dead_code)]
 pub enum Lang {
     #[default]
     Zh,
@@ -13,6 +14,7 @@ pub enum Lang {
 }
 
 impl Lang {
+    #[allow(dead_code)]
     pub fn from_str(s: &str) -> Self {
         match s {
             "en" => Self::En,
@@ -20,6 +22,7 @@ impl Lang {
         }
     }
 
+    #[allow(dead_code)]
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Zh => "zh",

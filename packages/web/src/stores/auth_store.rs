@@ -20,6 +20,7 @@ impl AuthState {
         }
     }
 
+    #[allow(dead_code)]
     pub fn token(&self) -> Option<&str> {
         self.access_token.as_deref()
     }
