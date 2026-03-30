@@ -6,7 +6,7 @@ use crate::client::ApiClient;
 use crate::error::Result;
 use serde::{Deserialize, Serialize};
 
-pub use super::common::MessageResponse;
+pub use super::common::{MessageResponse, encode_query_value};
 
 /// 分销 API 客户端
 #[derive(Debug, Clone)]
@@ -194,10 +194,10 @@ impl DistributionQueryParams {
     pub fn to_query_string(&self) -> String {
         let mut params = Vec::new();
         if let Some(ref start) = self.start_date {
-            params.push(format!("start_date={}", start));
+            params.push(format!("start_date={}", encode_query_value(start)));
         }
         if let Some(ref end) = self.end_date {
-            params.push(format!("end_date={}", end));
+            params.push(format!("end_date={}", encode_query_value(end)));
         }
         if let Some(limit) = self.limit {
             params.push(format!("limit={}", limit));

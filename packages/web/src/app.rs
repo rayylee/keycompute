@@ -49,6 +49,7 @@ pub fn App() -> Element {
 pub fn AppLayout() -> Element {
     let user_store = use_context::<UserStore>();
     let mut auth_store = use_context::<AuthStore>();
+    let ui_store = use_context::<UiStore>();
     let nav = use_navigator();
 
     // 同步检查认证状态：在渲染之前立即判断，未登录则渲染重定向占位符
@@ -103,10 +104,7 @@ pub fn AppLayout() -> Element {
         },
         NavSection {
             title: Some("用量".to_string()),
-            items: vec![
-                NavItem::new("用量统计", "/usage", NavIcon::BarChart),
-                NavItem::new("账单", "/billing", NavIcon::Wallet),
-            ],
+            items: vec![NavItem::new("用量统计", "/usage", NavIcon::BarChart)],
         },
         NavSection {
             title: Some("账务".to_string()),
@@ -154,7 +152,7 @@ pub fn AppLayout() -> Element {
                     nav.replace(Route::Login {});
                 }
             },
-            Toast {}
+            Toast { toast: ui_store.toast }
             Outlet::<Route> {}
         }
     }

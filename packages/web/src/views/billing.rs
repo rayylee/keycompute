@@ -1,144 +1,21 @@
 use dioxus::prelude::*;
 
 use crate::router::Route;
-use crate::services::{api_client::with_auto_refresh, billing_service};
-use crate::stores::auth_store::AuthStore;
-use crate::utils::time::{format_time, format_time_opt};
-use ui::Pagination;
 
-const PAGE_SIZE: usize = 20;
-
-/// 账单页面 - /billing
+/// 账单页面（已合并到支付与账单页面）
+///
+/// 该页面保留以维持 /billing 路由兼容，自动重定向到 /payments
 #[component]
 pub fn Billing() -> Element {
-    let auth_store = use_context::<AuthStore>();
     let nav = use_navigator();
-    let mut page = use_signal(|| 1u32);
-
-    // 账单统计
-    let stats = use_resource(move || async move {
-        with_auto_refresh(auth_store, |token| async move {
-            billing_service::stats(&token).await
-        })
-        .await
+    use_effect(move || {
+        nav.replace(Route::PaymentsOverview {});
     });
-
-    // 账单记录
-    let records = use_resource(move || async move {
-        with_auto_refresh(auth_store, |token| async move {
-            billing_service::list(None, &token).await
-        })
-        .await
-    });
-
     rsx! {
         div {
-            class: "page-container",
-            div {
-                class: "page-header",
-                h1 { class: "page-title", "账单" }
-                p { class: "page-subtitle", "查看账单记录与支付历史" }
-                button {
-                    class: "btn btn-primary",
-                    onclick: move |_| { nav.push(Route::Recharge {}); },
-                    "充值"
-                }
-            }
-
-            // 汇总卡片
-            div { class: "stats-grid",
-                match stats() {
-                    None => rsx! { p { "加载中..." } },
-                    Some(Err(e)) => rsx! { p { "加载失败：{e}" } },
-                    Some(Ok(s)) => rsx! {
-                        div { class: "stat-card",
-                            div { class: "stat-body",
-                                p { class: "stat-title", "总金额" }
-                                p { class: "stat-value", "{s.total_amount:.2} {s.currency}" }
-                                p { class: "stat-label", "统计周期：{s.period}" }
-                            }
-                        }
-                        div { class: "stat-card",
-                            div { class: "stat-body",
-                                p { class: "stat-title", "已支付" }
-                                p { class: "stat-value", "{s.total_paid:.2} {s.currency}" }
-                                p { class: "stat-label", "已完成订单" }
-                            }
-                        }
-                        div { class: "stat-card",
-                            div { class: "stat-body",
-                                p { class: "stat-title", "待支付" }
-                                p { class: "stat-value", "{s.total_unpaid:.2} {s.currency}" }
-                                p { class: "stat-label", "未完成订单" }
-                            }
-                        }
-                    },
-                }
-            }
-
-            // 账单记录表格
-            div { class: "section",
-                h2 { class: "section-title", "账单记录" }
-                match records() {
-                    None => rsx! { p { class: "loading-text", "加载中..." } },
-                    Some(Err(e)) => rsx! { p { class: "error-text", "加载失败：{e}" } },
-                    Some(Ok(recs)) if recs.is_empty() => rsx! {
-                        p { class: "empty-text", "暂无账单记录" }
-                    },
-                    Some(Ok(recs)) => rsx! {
-                        div { class: "table-container",
-                            table { class: "data-table",
-                                thead {
-                                    tr {
-                                        th { "时间" }
-                                        th { "金额" }
-                                        th { "币种" }
-                                        th { "描述" }
-                                        th { "状态" }
-                                        th { "支付时间" }
-                                    }
-                                }
-                                tbody {
-                                    {
-                                        let start = (page() as usize - 1) * PAGE_SIZE;
-                                        rsx! {
-                                            for r in recs.iter().skip(start).take(PAGE_SIZE) {
-                                                tr {
-                                                    td { { format_time(&r.created_at) } }
-                                                    td { "{r.amount:.4}" }
-                                                    td { "{r.currency}" }
-                                                    td { { r.description.as_deref().unwrap_or("—") } }
-                                                    td {
-                                                        span {
-                                                            class: if r.status == "paid" { "badge badge-success" } else { "badge badge-warning" },
-                                                            "{r.status}"
-                                                        }
-                                                    }
-                                                    td { { format_time_opt(r.paid_at.as_deref()) } }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        {
-                            let total = recs.len();
-                            let total_pages = total.div_ceil(PAGE_SIZE).max(1) as u32;
-                            rsx! {
-                                div { class: "pagination",
-                                    span { class: "pagination-info", "共 {total} 条" }
-                                    Pagination {
-                                        current: page(),
-                                        total_pages,
-                                        on_page_change: move |p| page.set(p),
-                                    }
-                                }
-                            }
-                        }
-                    },
-                }
-            }
+            class: "auth-redirect-loading",
+            style: "display:flex;align-items:center;justify-content:center;height:100vh",
+            span { style: "color:var(--text-secondary,#64748b)", "跳转中…" }
         }
     }
 }

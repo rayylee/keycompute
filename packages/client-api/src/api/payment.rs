@@ -6,6 +6,8 @@ use crate::client::ApiClient;
 use crate::error::Result;
 use serde::{Deserialize, Serialize};
 
+use super::common::encode_query_value;
+
 /// 支付 API 客户端
 #[derive(Debug, Clone)]
 pub struct PaymentApi {
@@ -135,7 +137,7 @@ impl PaymentQueryParams {
     pub fn to_query_string(&self) -> String {
         let mut params = Vec::new();
         if let Some(ref status) = self.status {
-            params.push(format!("status={}", status));
+            params.push(format!("status={}", encode_query_value(status)));
         }
         if let Some(limit) = self.limit {
             params.push(format!("limit={}", limit));

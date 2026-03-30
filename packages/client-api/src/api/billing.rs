@@ -6,6 +6,8 @@ use crate::client::ApiClient;
 use crate::error::Result;
 use serde::{Deserialize, Serialize};
 
+use super::common::encode_query_value;
+
 /// 账单 API 客户端
 #[derive(Debug, Clone)]
 pub struct BillingApi {
@@ -79,10 +81,10 @@ impl BillingQueryParams {
     pub fn to_query_string(&self) -> String {
         let mut params = Vec::new();
         if let Some(ref start) = self.start_date {
-            params.push(format!("start_date={}", start));
+            params.push(format!("start_date={}", encode_query_value(start)));
         }
         if let Some(ref end) = self.end_date {
-            params.push(format!("end_date={}", end));
+            params.push(format!("end_date={}", encode_query_value(end)));
         }
         if let Some(limit) = self.limit {
             params.push(format!("limit={}", limit));

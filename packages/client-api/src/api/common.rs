@@ -11,3 +11,23 @@ use serde::Deserialize;
 pub struct MessageResponse {
     pub message: String,
 }
+
+/// 对 URL 查询参数字符串进行百分比编码
+///
+/// 使用 `percent-encoding` 标准对参数内容编码，防止特殊字符导致 URL 解析错误。
+pub fn encode_query_value(value: &str) -> String {
+    // 对除字母、数字、“-_.~” 之外的字符进行百分比编码
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char);
+            }
+            b => {
+                encoded.push('%');
+                encoded.push_str(&format!("{:02X}", b));
+            }
+        }
+    }
+    encoded
+}

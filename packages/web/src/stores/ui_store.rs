@@ -1,39 +1,13 @@
 use dioxus::prelude::*;
 
+// ToastMsg/ToastKind 已迁移到 ui 包，re-export 保持外部兼容
+pub use ui::{ToastKind, ToastMsg};
+
 /// UI 全局状态（侧边栏、Toast 通知等页面级状态）
 #[derive(Clone, Copy)]
 pub struct UiStore {
     /// 全局 Toast 消息
     pub toast: Signal<Option<ToastMsg>>,
-}
-
-/// Toast 消息
-#[derive(Clone, PartialEq)]
-pub struct ToastMsg {
-    pub kind: ToastKind,
-    pub title: String,
-    pub message: Option<String>,
-}
-
-#[derive(Clone, PartialEq)]
-#[allow(dead_code)]
-pub enum ToastKind {
-    Success,
-    Error,
-    Warning,
-    Info,
-}
-
-#[allow(dead_code)]
-impl ToastKind {
-    pub fn css_class(&self) -> &'static str {
-        match self {
-            Self::Success => "toast toast-success",
-            Self::Error => "toast toast-error",
-            Self::Warning => "toast toast-warning",
-            Self::Info => "toast toast-info",
-        }
-    }
 }
 
 impl UiStore {

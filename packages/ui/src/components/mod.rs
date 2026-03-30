@@ -20,6 +20,7 @@ pub mod input;
 pub mod loading;
 pub mod modal;
 pub mod table;
+pub mod toast;
 
 pub use alert::Alert;
 pub use badge::Badge;
@@ -29,3 +30,4 @@ pub use input::{Input, Textarea};
 pub use loading::{LoadingSpinner, Skeleton};
 pub use modal::Modal;
 pub use table::Table;
+pub use toast::{Toast, ToastKind, ToastMsg};
