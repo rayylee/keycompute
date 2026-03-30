@@ -44,24 +44,45 @@ pub fn App() -> Element {
 }
 
 /// 带 AppShell 侧边栏布局的页面外壳
-/// 内含路由守卫：未登录时自动跳转到登录页
+/// 内含路由守卫：未登录时立即重定向到登录页，避免闪屏
 #[component]
 pub fn AppLayout() -> Element {
     let user_store = use_context::<UserStore>();
     let auth_store = use_context::<AuthStore>();
     let nav = use_navigator();
 
-    // 路由守卫：未登录时重定向到登录页
-    // 延迟执行以避免在渲染期间立即导航（Dioxus 禁止路由守卫范式）
+    // 同步检查认证状态：在渲染之前立即判断，未登录则渲染重定向占位符
+    // 同时通过 use_effect 执行实际导航（Dioxus 要求导航在 effect 中进行）
+    let is_auth = auth_store.is_authenticated();
+
     use_effect(move || {
         if !auth_store.is_authenticated() {
-            nav.push(Route::Login {});
+            nav.replace(Route::Login {});
         }
     });
 
-    // 认证状态未就绪时（没有 token）不渲染内容
-    if !auth_store.is_authenticated() {
-        return rsx! {};
+    // 未登录时渲染全屏加载态，use_effect 会在下一帧立即触发跳转
+    // 避免将受保护页面内容闪现给未认证用户
+    if !is_auth {
+        return rsx! {
+            div {
+                class: "auth-redirect-loading",
+                style: "display:flex;align-items:center;justify-content:center;height:100vh;background:var(--bg-primary,#f8fafc)",
+                div {
+                    style: "display:flex;flex-direction:column;align-items:center;gap:12px",
+                    div {
+                        class: "spinner",
+                        style: "width:32px;height:32px",
+                        role: "status",
+                        "aria-label": "跳转中",
+                    }
+                    span {
+                        style: "color:var(--text-secondary,#64748b);font-size:14px",
+                        "正在跳转到登录页…"
+                    }
+                }
+            }
+        };
     }
 
     let is_admin = user_store.is_admin();

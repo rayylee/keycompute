@@ -38,3 +38,10 @@ pub async fn create_order(
         .create_payment_order(&req, token)
         .await
 }
+
+pub async fn sync_order(out_trade_no: &str, token: &str) -> Result<PaymentOrderResponse> {
+    let client = get_client();
+    PaymentApi::new(&client)
+        .sync_payment_order(out_trade_no, token)
+        .await
+}
