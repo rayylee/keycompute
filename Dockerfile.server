@@ -1,0 +1,108 @@
+# =============================================================================
+# Dockerfile.server — KeyCompute 后端服务多阶段构建
+#
+# 构建阶段：
+#   1. chef-planner  — 生成 recipe.json（依赖清单），用于依赖层缓存
+#   2. chef-builder  — 先缓存依赖，再编译应用二进制
+#   3. runtime       — 最小化运行时镜像，仅包含二进制与必要系统库
+#
+# 使用 cargo-chef 可大幅提升 CI/CD 中依赖层复用率（源码变更时不重新下载依赖）
+# =============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 阶段 1：chef-planner — 生成依赖 recipe
+# ─────────────────────────────────────────────────────────────────────────────
+FROM rust:1.85-bookworm AS chef-planner
+
+# 安装 cargo-chef（依赖缓存工具）
+RUN cargo install cargo-chef --locked
+
+# 安装 wasm32 target：planner 阶段 cargo chef prepare 需要解析全工作区依赖图
+# 包含 packages/web 等 WASM crate，缺少此 target 会导致 prepare 失败
+RUN rustup target add wasm32-unknown-unknown
+
+WORKDIR /app
+
+# 复制整个工作区（Cargo.toml / Cargo.lock / 所有 crate 源码）
+# 注意：cargo chef prepare 需要读取完整工作区结构，所有 workspace.members
+# 中声明的成员目录（包括 packages/ui、desktop、mobile 等）必须存在
+COPY Cargo.toml Cargo.lock ./
+COPY crates/ crates/
+COPY packages/ packages/
+
+# 生成 recipe.json（锁定依赖图快照）
+RUN cargo chef prepare --recipe-path recipe.json
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 阶段 2：chef-builder — 缓存依赖 → 编译应用
+# ─────────────────────────────────────────────────────────────────────────────
+FROM rust:1.85-bookworm AS chef-builder
+
+# 安装构建依赖（libpq-dev 用于 sqlx/PostgreSQL，pkg-config/libssl-dev 用于 TLS）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    libpq-dev \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN cargo install cargo-chef --locked
+
+# 安装 wasm32 target：工作区含前端 WASM crate，cargo chef cook 解析依赖图时需要此 target
+# 否则 chef cook 尝试处理 packages/web 等 wasm32 crate 时会报 "target not found" 错误
+RUN rustup target add wasm32-unknown-unknown
+
+WORKDIR /app
+
+# ── 依赖缓存层（recipe.json 不变则此层直接命中缓存）──
+COPY --from=chef-planner /app/recipe.json recipe.json
+# 注意：cargo chef cook 不支持 -p 参数，只能整体缓存工作区依赖
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# ── 编译应用层（源码变更时仅重新编译 crate，依赖层已缓存）──
+COPY Cargo.toml Cargo.lock ./
+COPY crates/ crates/
+COPY packages/ packages/
+
+# 编译 keycompute-server 可执行文件
+RUN cargo build --release -p keycompute-server
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 阶段 3：runtime — 最小化运行时镜像
+# ─────────────────────────────────────────────────────────────────────────────
+FROM debian:bookworm-slim AS runtime
+
+# 安装运行时依赖（不包含开发头文件）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # PostgreSQL 客户端运行时库（sqlx 连接 Postgres 需要）
+    libpq5 \
+    # TLS 运行时库
+    libssl3 \
+    # CA 证书（HTTPS 上游请求）
+    ca-certificates \
+    # 健康检查用（Docker healthcheck curl）
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 创建非 root 运行用户，提升安全性
+RUN groupadd -r keycompute && useradd -r -g keycompute keycompute
+
+WORKDIR /app
+
+# 复制编译产物
+COPY --from=chef-builder /app/target/release/keycompute-server /usr/local/bin/keycompute-server
+
+# 确保二进制可执行
+RUN chmod +x /usr/local/bin/keycompute-server
+
+# 切换为非 root 用户
+USER keycompute
+
+# 后端服务默认端口
+EXPOSE 3000
+
+# 健康检查：每 30s 检查一次，失败 3 次后标记为 unhealthy
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
+
+# 启动命令
+ENTRYPOINT ["/usr/local/bin/keycompute-server"]

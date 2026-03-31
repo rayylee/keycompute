@@ -1,0 +1,74 @@
+# =============================================================================
+# Dockerfile.web — KeyCompute 前端 WASM 多阶段构建
+#
+# 构建阶段：
+#   1. wasm-builder — 安装 dioxus-cli，编译 WASM + 打包静态资产
+#   2. runtime      — Nginx 托管 dist/ 目录，配置 WASM MIME 类型
+#
+# Dioxus 编译产物说明：
+#   dx build --release 会在 dist/ 目录生成：
+#   - index.html
+#   - assets/         （JS、CSS、图片、字体等）
+#   - *.wasm          （WebAssembly 二进制）
+#   - *.js            （WASM glue 胶水代码）
+# =============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 阶段 1：wasm-builder — 编译 Dioxus WASM 前端
+# ─────────────────────────────────────────────────────────────────────────────
+FROM rust:1.85-bookworm AS wasm-builder
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# 添加 wasm32 编译目标
+RUN rustup target add wasm32-unknown-unknown
+
+# 安装 dioxus-cli（dioxus-cli 在 crates.io 的版本号独立于框架版本，不能指定 --version 0.7.x）
+# --locked 保证 dioxus-cli 自身依赖锁定
+RUN cargo install dioxus-cli --locked
+
+WORKDIR /app
+
+# 复制工作区配置与锁文件（优先复制，利用 Docker 层缓存）
+COPY Cargo.toml Cargo.lock ./
+
+# 复制完整工作区源码
+# 注意：Cargo 解析工作区时要求 workspace.members 中声明的所有成员目录都必须存在
+# 因此需要同时复制 packages/ 和 crates/ 两个顶层目录
+COPY packages/ packages/
+COPY crates/ crates/
+
+# 编译前端（生产模式，在工作区根目录执行）
+# dx build 产物输出到工作区根目录的 dist/ 下（即 /app/dist）
+# --platform web 显式指定平台，Docker/CI 无图形环境下避免平台推断错误
+RUN dx build --release --package web --platform web
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 阶段 2：runtime — Nginx 静态文件托管
+# ─────────────────────────────────────────────────────────────────────────────
+FROM nginx:1.27-alpine AS runtime
+
+# 删除 Nginx 默认站点配置
+RUN rm -f /etc/nginx/conf.d/default.conf
+
+# 复制 Nginx 站点配置（SPA 路由 + WASM MIME + gzip 压缩）
+COPY nginx/nginx.conf /etc/nginx/nginx.conf
+
+# 复制 dx build 产物到 Nginx 静态目录
+# dx build --platform web 产物路径为：target/dx/<package_name>/release/web/public/
+# package_name 来自 packages/web/Cargo.toml 中 [package].name = "web"
+COPY --from=wasm-builder /app/target/dx/web/release/web/public /usr/share/nginx/html
+
+# Nginx 默认端口
+EXPOSE 80
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -qO- http://localhost/health.txt 2>/dev/null || \
+        wget -qO- http://localhost/ 2>/dev/null | grep -q "html" || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

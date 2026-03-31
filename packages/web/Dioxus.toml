@@ -1,0 +1,14 @@
+[application]
+name = "web"
+# 明确指定默认平台为 web，避免 Docker/CI 无图形环境下 dx build 推断错误平台
+default_platform = "web"
+# 注意：out_dir 仅对 dx bundle 命令生效，对 dx build 无效
+# dx build --platform web 的产物实际路径为：
+#   target/dx/<package_name>/release/web/public/
+# Dockerfile.web 中 COPY 路径也应指向该目录
+
+[web.app]
+title = "KeyCompute"
+
+[web.watcher]
+reload_html = true
