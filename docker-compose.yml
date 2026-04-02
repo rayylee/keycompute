@@ -85,6 +85,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.server
+    pull_policy: build
     image: keycompute-server:latest
     container_name: keycompute-server
     restart: unless-stopped
@@ -126,6 +127,10 @@ services:
       # 服务器配置
       KC__SERVER__BIND_ADDR: "0.0.0.0"
       KC__SERVER__PORT: "3000"
+
+      # 默认系统管理员配置（首次启动时自动创建）
+      KC__DEFAULT_ADMIN_EMAIL: ${KC__DEFAULT_ADMIN_EMAIL:-admin@keycompute.local}
+      KC__DEFAULT_ADMIN_PASSWORD: ${KC__DEFAULT_ADMIN_PASSWORD:-12345}
     networks:
       - keycompute-internal
       - keycompute-public
@@ -152,6 +157,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.web
+    pull_policy: build
     image: keycompute-web:latest
     container_name: keycompute-web
     restart: unless-stopped

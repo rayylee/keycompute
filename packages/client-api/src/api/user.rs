@@ -59,7 +59,7 @@ pub struct CurrentUserResponse {
     pub role: String,
     pub tenant_id: String,
     pub created_at: String,
-    pub updated_at: String,
+    pub updated_at: Option<String>,
 }
 
 /// 更新资料请求

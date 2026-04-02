@@ -124,12 +124,15 @@ impl DistributionApi {
 /// 分销收益
 #[derive(Debug, Clone, Deserialize)]
 pub struct DistributionEarnings {
-    pub total_earnings: f64,
-    pub available_earnings: f64,
-    pub withdrawn_earnings: f64,
-    pub pending_earnings: f64,
+    #[serde(rename = "total_earnings")]
+    pub total_earnings: String,
+    #[serde(rename = "settled_amount")]
+    pub available_earnings: String,
+    #[serde(rename = "pending_amount")]
+    pub pending_earnings: String,
     pub currency: String,
-    pub referral_count: i32,
+    #[serde(rename = "level1_referrals")]
+    pub referral_count: i64,
 }
 
 /// 推荐人信息
@@ -138,15 +141,19 @@ pub struct ReferralInfo {
     pub id: String,
     pub email: String,
     pub name: Option<String>,
+    #[serde(rename = "created_at")]
     pub joined_at: String,
-    pub total_spent: f64,
-    pub earnings_from_referral: f64,
+    #[serde(rename = "total_consumption")]
+    pub total_spent: String,
+    #[serde(rename = "earnings")]
+    pub earnings_from_referral: String,
 }
 
 /// 推荐码响应
 #[derive(Debug, Clone, Deserialize)]
 pub struct ReferralCodeResponse {
     pub referral_code: String,
+    #[serde(rename = "invite_link")]
     pub referral_link: String,
 }
 

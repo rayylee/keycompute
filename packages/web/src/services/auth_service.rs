@@ -14,7 +14,10 @@ use super::api_client::get_client;
 pub async fn login(email: &str, password: &str) -> Result<AuthResponse> {
     let client = get_client();
     let api = AuthApi::new(&client);
-    api.login(&LoginRequest::new(email, password)).await
+    let resp = api.login(&LoginRequest::new(email, password)).await?;
+    // 登录成功后设置全局 token
+    client.set_token(&resp.access_token);
+    Ok(resp)
 }
 
 pub async fn register(email: &str, password: &str, name: Option<&str>) -> Result<AuthResponse> {

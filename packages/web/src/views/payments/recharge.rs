@@ -14,7 +14,6 @@ use crate::stores::ui_store::UiStore;
 enum PayMethod {
     Alipay,
     WechatPay,
-    Balance,
 }
 
 impl PayMethod {
@@ -22,7 +21,6 @@ impl PayMethod {
         match self {
             PayMethod::Alipay => "支付宝",
             PayMethod::WechatPay => "微信支付",
-            PayMethod::Balance => "余额支付",
         }
     }
 
@@ -30,7 +28,6 @@ impl PayMethod {
         match self {
             PayMethod::Alipay => "alipay",
             PayMethod::WechatPay => "wechatpay",
-            PayMethod::Balance => "balance",
         }
     }
 
@@ -38,7 +35,6 @@ impl PayMethod {
         match self {
             PayMethod::Alipay => "💳",
             PayMethod::WechatPay => "📱",
-            PayMethod::Balance => "💰",
         }
     }
 }
@@ -234,7 +230,7 @@ pub fn Recharge() -> Element {
                             div { class: "form-group",
                                 label { class: "form-label", "支付方式" }
                                 div { class: "pay-method-grid",
-                                    for method in [PayMethod::Alipay, PayMethod::WechatPay, PayMethod::Balance] {
+                                    for method in [PayMethod::Alipay, PayMethod::WechatPay] {
                                         {
                                             let is_active = pay_method() == method;
                                             let m = method.clone();
@@ -344,15 +340,6 @@ pub fn Recharge() -> Element {
                                     p {
                                         style: "font-size:12px;color:var(--text-secondary);margin-top:8px;text-align:center",
                                         "支付完成后点击【已完成支付】按钮刷新状态"
-                                    }
-                                }
-                            } else {
-                                // 没有跳转链接（余额支付模式）
-                                div { class: "alert alert-success",
-                                    span { class: "alert-icon", "✔" }
-                                    div { class: "alert-content",
-                                        p { class: "alert-title", "余额支付处理中" }
-                                        p { class: "alert-body", "系统正在处理您的订单，请稍候…" }
                                     }
                                 }
                             }

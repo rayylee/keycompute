@@ -55,8 +55,21 @@ pub struct UserDetail {
     pub name: Option<String>,
     pub role: String,
     pub tenant_id: String,
+    pub tenant_name: Option<String>,
+    pub balance: Option<f64>,
     pub created_at: String,
-    pub updated_at: String,
+    pub updated_at: Option<String>,
+    pub last_login_at: Option<String>,
+}
+
+/// 用户列表响应（带分页信息）
+#[derive(Debug, Clone, Deserialize)]
+pub struct UserListResponse {
+    pub users: Vec<UserDetail>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
+    pub total_pages: i64,
 }
 
 /// 更新用户请求

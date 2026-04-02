@@ -151,8 +151,8 @@ pub fn Usage() -> Element {
                                                     td { "{r.total_tokens}" }
                                                     td {
                                                         {
-                                                            if let Some(c) = r.cost {
-                                                                format!("¥{c:.6}")
+                                                            if r.cost > 0.0 {
+                                                                format!("¥{:.6}", r.cost)
                                                             } else {
                                                                 "—".to_string()
                                                             }

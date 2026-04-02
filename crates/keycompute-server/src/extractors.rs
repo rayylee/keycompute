@@ -62,9 +62,9 @@ impl AuthExtractor {
             .strip_prefix("Bearer ")
             .ok_or_else(|| ApiError::Auth("Invalid Authorization format".to_string()))?;
 
-        // 使用 AuthService 验证 API Key
+        // 使用 AuthService 验证 Token（自动检测 JWT 或 API Key）
         let auth_context = auth_service
-            .verify_api_key(token)
+            .verify_token(token)
             .await
             .map_err(|e| ApiError::Auth(format!("Authentication failed: {}", e)))?;
 
@@ -83,7 +83,7 @@ impl AuthExtractor {
 
     /// 检查是否是管理员
     pub fn is_admin(&self) -> bool {
-        self.role == "admin"
+        self.role == "admin" || self.role == "system"
     }
 }
 

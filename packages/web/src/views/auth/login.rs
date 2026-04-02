@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use crate::hooks::use_i18n::use_i18n;
 use crate::router::Route;
 use crate::services::auth_service;
-use crate::services::user_service;
+use crate::services::api_client::get_client;
 use crate::stores::auth_store::AuthStore;
 use crate::stores::user_store::{UserInfo, UserStore};
 
@@ -35,17 +35,18 @@ pub fn Login() -> Element {
         spawn(async move {
             match auth_service::login(&email_val, &password_val).await {
                 Ok(resp) => {
-                    auth_store.login(resp.access_token.clone(), resp.refresh_token.clone());
-                    // 拉取当前用户信息
-                    if let Ok(user) = user_service::get_current_user(&resp.access_token).await {
-                        *user_store.info.write() = Some(UserInfo {
-                            id: user.id.to_string(),
-                            email: user.email,
-                            name: user.name,
-                            role: user.role,
-                            tenant_id: user.tenant_id.to_string(),
-                        });
-                    }
+                    // 设置 API 客户端 token
+                    get_client().set_token(&resp.access_token);
+                    // 更新 auth_store
+                    auth_store.login(resp.access_token.clone());
+                    // 使用登录响应中的用户信息
+                    *user_store.info.write() = Some(UserInfo {
+                        id: resp.user_id.clone(),
+                        email: resp.email.clone(),
+                        name: None,
+                        role: resp.role.clone(),
+                        tenant_id: resp.tenant_id.clone(),
+                    });
                     nav.push(Route::Dashboard {});
                 }
                 Err(e) => {

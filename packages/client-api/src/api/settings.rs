@@ -47,14 +47,20 @@ impl SettingsApi {
     }
 
     /// 更新指定设置（Admin）
+    ///
+    /// 后端期望接收 `{ "value": "..." }` 结构
     pub async fn update_system_setting_by_key(
         &self,
         key: &str,
         value: &serde_json::Value,
         token: &str,
     ) -> Result<SettingValue> {
+        // 将值包装在 { "value": ... } 结构中
+        let payload = serde_json::json!({
+            "value": value.as_str().unwrap_or(&value.to_string())
+        });
         self.client
-            .put_json(&format!("/api/v1/settings/{}", key), value, Some(token))
+            .put_json(&format!("/api/v1/settings/{}", key), &payload, Some(token))
             .await
     }
 
@@ -85,11 +91,29 @@ impl SettingValue {
         matches!(self, SettingValue::Null)
     }
 
-    /// 获取字符串值
+    /// 获取字符串值（自动转换各种类型）
     pub fn as_string(&self) -> Option<&str> {
         match self {
             SettingValue::String(s) => Some(s),
             _ => None,
+        }
+    }
+
+    /// 将任意类型值转换为字符串
+    pub fn to_string_value(&self) -> String {
+        match self {
+            SettingValue::String(s) => s.clone(),
+            SettingValue::Boolean(b) => b.to_string(),
+            SettingValue::Number(n) => {
+                // 整数直接显示为整数
+                if n.fract() == 0.0 {
+                    format!("{}", *n as i64)
+                } else {
+                    n.to_string()
+                }
+            }
+            SettingValue::Null => String::new(),
+            _ => String::new(),
         }
     }
 

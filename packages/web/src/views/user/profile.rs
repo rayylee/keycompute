@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 
+use crate::services::api_client::with_auto_refresh;
 use crate::services::user_service;
 use crate::stores::auth_store::AuthStore;
 use crate::stores::user_store::{UserInfo, UserStore};
@@ -14,6 +15,30 @@ pub fn UserProfile() -> Element {
     let mut saving = use_signal(|| false);
     let mut save_msg = use_signal(|| Option::<String>::None);
     let mut save_error = use_signal(|| Option::<String>::None);
+
+    // 如果 UserStore 没有数据，主动获取
+    let user_data = use_resource(move || {
+        let auth = auth_store.clone();
+        async move {
+            // 先检查是否已有数据
+            if user_store.info.read().is_some() {
+                return Ok(());
+            }
+            // 获取当前用户信息
+            with_auto_refresh(auth, |token| async move {
+                let user = user_service::get_current_user(&token).await?;
+                *user_store.info.write() = Some(UserInfo {
+                    id: user.id.to_string(),
+                    email: user.email,
+                    name: user.name,
+                    role: user.role,
+                    tenant_id: user.tenant_id.to_string(),
+                });
+                Ok::<(), client_api::ClientError>(())
+            })
+            .await
+        }
+    });
 
     // 从 UserStore 读取当前用户
     let user_info = user_store.info.read();

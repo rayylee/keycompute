@@ -33,17 +33,36 @@ pub struct RoutingTargetInfo {
     pub endpoint: String,
 }
 
+/// Provider 状态信息
+#[derive(Debug, Serialize)]
+pub struct ProviderStatusInfo {
+    /// Provider 名称
+    pub provider: String,
+    /// 是否健康
+    pub is_healthy: bool,
+    /// 账号数量
+    pub account_count: usize,
+    /// 状态描述
+    pub status: String,
+}
+
 /// 路由调试响应
 #[derive(Debug, Serialize)]
 pub struct RoutingDebugResponse {
     /// 请求 ID
     pub request_id: Uuid,
-    /// 主目标
-    pub primary: RoutingTargetInfo,
-    /// 备用链路
+    /// 是否成功路由
+    pub routed: bool,
+    /// 主目标（路由成功时有值）
+    pub primary: Option<RoutingTargetInfo>,
+    /// 备用链路（路由成功时有值）
     pub fallback_chain: Vec<RoutingTargetInfo>,
     /// 使用的定价
     pub pricing: PricingInfo,
+    /// 所有 Provider 状态（用于诊断）
+    pub provider_status: Vec<ProviderStatusInfo>,
+    /// 提示信息
+    pub message: Option<String>,
 }
 
 /// 定价信息
@@ -62,11 +81,14 @@ pub struct PricingInfo {
 /// 路由调试接口
 ///
 /// 模拟一个请求，返回路由决策结果（不实际执行）
+/// 即使路由失败也会返回 200，包含详细的诊断信息
 pub async fn debug_routing(
     State(state): State<AppState>,
     auth: AuthExtractor,
     Query(query): Query<RoutingDebugQuery>,
 ) -> Result<Json<RoutingDebugResponse>> {
+    use keycompute_db::models::Account;
+
     // 1. 构建 PricingSnapshot
     let pricing = state
         .pricing
@@ -89,46 +111,126 @@ pub async fn debug_routing(
         started_at: chrono::Utc::now(),
     };
 
-    // 3. 执行路由（只读）
-    let plan = state
+    // 3. 获取所有配置的 provider 列表
+    let all_providers: Vec<String> = state
         .routing
-        .route(&ctx)
-        .await
-        .map_err(|e| ApiError::Internal(format!("Routing failed: {}", e)))?;
+        .configured_providers()
+        .iter()
+        .cloned()
+        .collect();
+    let healthy_providers = state.routing.healthy_providers();
+    let healthy_set: std::collections::HashSet<String> =
+        healthy_providers.iter().cloned().collect();
 
-    // 4. 构建响应
-    let response = RoutingDebugResponse {
-        request_id,
-        primary: RoutingTargetInfo {
-            provider: plan.primary.provider.clone(),
-            account_id: plan.primary.account_id,
-            endpoint: plan.primary.endpoint.clone(),
-        },
-        fallback_chain: plan
-            .fallback_chain
-            .iter()
-            .map(|t| RoutingTargetInfo {
-                provider: t.provider.clone(),
-                account_id: t.account_id,
-                endpoint: t.endpoint.clone(),
-            })
-            .collect(),
-        pricing: PricingInfo {
-            model_name: pricing.model_name,
-            currency: pricing.currency,
-            input_price_per_1k: pricing.input_price_per_1k.to_string(),
-            output_price_per_1k: pricing.output_price_per_1k.to_string(),
-        },
-    };
+    // 4. 查询每个 provider 的账号数量
+    let pool = state
+        .pool
+        .as_ref()
+        .ok_or_else(|| ApiError::Internal("Database not configured".to_string()))?;
 
-    tracing::info!(
-        request_id = %request_id,
-        primary_provider = %plan.primary.provider,
-        fallback_count = plan.fallback_chain.len(),
-        "Routing debug completed"
-    );
+    // 获取所有启用的账号
+    let all_accounts = Account::find_enabled_all(pool).await.unwrap_or_default();
 
-    Ok(Json(response))
+    // 按 provider 统计账号数量
+    let mut provider_account_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for account in &all_accounts {
+        *provider_account_counts
+            .entry(account.provider.clone())
+            .or_insert(0) += 1;
+    }
+
+    let mut provider_status = Vec::new();
+    for provider in all_providers {
+        let is_healthy = healthy_set.contains(&provider);
+        let account_count = provider_account_counts.get(&provider).copied().unwrap_or(0);
+
+        let status = if account_count == 0 {
+            "未配置账号".to_string()
+        } else if !is_healthy {
+            "Provider 不健康".to_string()
+        } else {
+            format!("{} 个账号", account_count)
+        };
+
+        provider_status.push(ProviderStatusInfo {
+            provider: provider.clone(),
+            is_healthy,
+            account_count,
+            status,
+        });
+    }
+
+    // 5. 执行路由（只读）
+    match state.routing.route(&ctx).await {
+        Ok(plan) => {
+            // 路由成功
+            let response = RoutingDebugResponse {
+                request_id,
+                routed: true,
+                primary: Some(RoutingTargetInfo {
+                    provider: plan.primary.provider.clone(),
+                    account_id: plan.primary.account_id,
+                    endpoint: plan.primary.endpoint.clone(),
+                }),
+                fallback_chain: plan
+                    .fallback_chain
+                    .iter()
+                    .map(|t| RoutingTargetInfo {
+                        provider: t.provider.clone(),
+                        account_id: t.account_id,
+                        endpoint: t.endpoint.clone(),
+                    })
+                    .collect(),
+                pricing: PricingInfo {
+                    model_name: pricing.model_name,
+                    currency: pricing.currency,
+                    input_price_per_1k: pricing.input_price_per_1k.to_string(),
+                    output_price_per_1k: pricing.output_price_per_1k.to_string(),
+                },
+                provider_status,
+                message: None,
+            };
+
+            tracing::info!(
+                request_id = %request_id,
+                primary_provider = %plan.primary.provider,
+                fallback_count = plan.fallback_chain.len(),
+                "Routing debug completed"
+            );
+
+            Ok(Json(response))
+        }
+        Err(keycompute_types::KeyComputeError::RoutingFailed) => {
+            // 路由失败，但仍返回诊断信息
+            let response = RoutingDebugResponse {
+                request_id,
+                routed: false,
+                primary: None,
+                fallback_chain: vec![],
+                pricing: PricingInfo {
+                    model_name: pricing.model_name,
+                    currency: pricing.currency,
+                    input_price_per_1k: pricing.input_price_per_1k.to_string(),
+                    output_price_per_1k: pricing.output_price_per_1k.to_string(),
+                },
+                provider_status,
+                message: Some(format!(
+                    "模型 '{}' 没有可用的路由目标。请检查：1) 是否已配置对应 Provider 的账号；2) Provider 是否健康；3) 模型名称是否正确。",
+                    query.model
+                )),
+            };
+
+            tracing::warn!(
+                request_id = %request_id,
+                model = %query.model,
+                "Routing debug failed: no available targets"
+            );
+
+            Ok(Json(response))
+        }
+        Err(e) => Err(ApiError::Internal(format!("Routing failed: {}", e))),
+    }
 }
 
 /// Provider 健康状态响应

@@ -94,22 +94,18 @@ pub struct DistributionStatsResponse {
 pub struct DistributionRuleResponse {
     /// 规则 ID
     pub id: String,
-    /// 租户 ID
-    pub tenant_id: String,
-    /// 受益人 ID
-    pub beneficiary_id: String,
-    /// 受益人名称
-    pub beneficiary_name: String,
-    /// 分成比例 (0.0 - 1.0)
-    pub share_ratio: f64,
-    /// 优先级
-    pub priority: i32,
+    /// 规则名称
+    pub name: String,
+    /// 佣金比例 (0.0 - 1.0)
+    pub commission_rate: f64,
+    /// 最小购买金额（可选）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_purchase_amount: Option<f64>,
+    /// 最大佣金金额（可选）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_commission_amount: Option<f64>,
     /// 是否启用
-    pub enabled: bool,
-    /// 生效时间
-    pub effective_from: String,
-    /// 过期时间
-    pub effective_until: Option<String>,
+    pub is_active: bool,
     /// 创建时间
     pub created_at: String,
 }
@@ -117,29 +113,29 @@ pub struct DistributionRuleResponse {
 /// 创建分销规则请求
 #[derive(Debug, Deserialize)]
 pub struct CreateDistributionRuleRequest {
-    /// 受益人 ID
-    pub beneficiary_id: Uuid,
-    /// 分成比例 (0.0 - 1.0, 例如 0.03 表示 3%)
-    pub share_ratio: f64,
-    /// 优先级
-    pub priority: Option<i32>,
-    /// 生效时间
-    pub effective_from: Option<String>,
-    /// 过期时间
-    pub effective_until: Option<String>,
+    /// 规则名称
+    pub name: String,
+    /// 佣金比例 (0.0 - 1.0, 例如 0.03 表示 3%)
+    pub commission_rate: f64,
+    /// 最小购买金额（可选）
+    pub min_purchase_amount: Option<f64>,
+    /// 最大佣金金额（可选）
+    pub max_commission_amount: Option<f64>,
 }
 
 /// 更新分销规则请求
 #[derive(Debug, Deserialize)]
 pub struct UpdateDistributionRuleRequest {
-    /// 分成比例
-    pub share_ratio: Option<f64>,
-    /// 优先级
-    pub priority: Option<i32>,
+    /// 规则名称
+    pub name: Option<String>,
+    /// 佣金比例
+    pub commission_rate: Option<f64>,
+    /// 最小购买金额（可选）
+    pub min_purchase_amount: Option<f64>,
+    /// 最大佣金金额（可选）
+    pub max_commission_amount: Option<f64>,
     /// 是否启用
-    pub enabled: Option<bool>,
-    /// 过期时间
-    pub effective_until: Option<String>,
+    pub is_active: Option<bool>,
 }
 
 /// 用户分销收益查询响应
@@ -200,6 +196,7 @@ pub struct InviteLinkResponse {
 pub async fn get_my_referral_code(
     auth: AuthExtractor,
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<ReferralCodeResponse>> {
     let pool = state
         .pool
@@ -215,10 +212,9 @@ pub async fn get_my_referral_code(
         .map_err(|e| ApiError::Internal(format!("Database error: {}", e)))?;
 
     // 构建邀请链接
-    // 格式: https://<domain>/register?ref=<user_id>
-    let base_url =
-        std::env::var("APP_BASE_URL").unwrap_or_else(|_| "https://app.keycompute.com".to_string());
-    let invite_link = format!("{}/register?ref={}", base_url, auth.user_id);
+    // 优先从 Host 头获取，其次从环境变量获取，最后使用默认值
+    let base_url = get_base_url(&headers);
+    let invite_link = format!("{}/auth/register?ref={}", base_url, auth.user_id);
 
     Ok(Json(ReferralCodeResponse {
         referral_code: auth.user_id.to_string(),
@@ -234,6 +230,7 @@ pub async fn get_my_referral_code(
 pub async fn generate_invite_link(
     auth: AuthExtractor,
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<GenerateInviteLinkRequest>,
 ) -> Result<Json<InviteLinkResponse>> {
     let pool = state
@@ -245,17 +242,16 @@ pub async fn generate_invite_link(
     check_distribution_enabled(pool).await?;
 
     // 构建基础邀请链接
-    let base_url =
-        std::env::var("APP_BASE_URL").unwrap_or_else(|_| "https://app.keycompute.com".to_string());
+    let base_url = get_base_url(&headers);
 
     // 如果有来源标识，添加到链接中
     let invite_link = if let Some(source) = &req.source {
         format!(
-            "{}/register?ref={}&source={}",
+            "{}/auth/register?ref={}&source={}",
             base_url, auth.user_id, source
         )
     } else {
-        format!("{}/register?ref={}", base_url, auth.user_id)
+        format!("{}/auth/register?ref={}", base_url, auth.user_id)
     };
 
     Ok(Json(InviteLinkResponse {
@@ -295,20 +291,33 @@ fn string_to_bigdecimal(value: &str) -> Result<BigDecimal> {
         .map_err(|e| ApiError::BadRequest(format!("Invalid decimal: {}", e)))
 }
 
-/// 检查分销系统是否启用
-async fn check_distribution_enabled(pool: &sqlx::PgPool) -> Result<()> {
-    use keycompute_db::models::system_setting::setting_keys;
-
-    let enabled =
-        keycompute_db::SystemSetting::get_bool(pool, setting_keys::DISTRIBUTION_ENABLED, false)
-            .await;
-
-    if !enabled {
-        return Err(ApiError::Forbidden(
-            "Distribution system is not enabled".to_string(),
-        ));
+/// 获取基础 URL
+/// 优先从 Host 头获取，其次从环境变量 APP_BASE_URL 获取，最后使用默认值
+fn get_base_url(headers: &axum::http::HeaderMap) -> String {
+    // 尝试从 Host 头获取
+    if let Some(host) = headers.get("host").and_then(|h| h.to_str().ok()) {
+        // 根据请求协议判断 http 或 https
+        // 如果有 X-Forwarded-Proto 头，使用它；否则默认 http（开发环境）
+        let scheme = headers
+            .get("x-forwarded-proto")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("http");
+        return format!("{}://{}:8080", scheme, host.split(':').next().unwrap_or(host));
     }
+    
+    // 其次从环境变量获取
+    if let Ok(url) = std::env::var("APP_BASE_URL") {
+        return url;
+    }
+    
+    // 最后使用默认值
+    "https://127.0.0.1:8080".to_string()
+}
 
+/// 检查分销系统是否启用
+async fn check_distribution_enabled(_pool: &sqlx::PgPool) -> Result<()> {
+    // 分销系统默认启用，不再检查系统设置
+    // 如需禁用，可通过租户级别的 distribution_enabled 控制
     Ok(())
 }
 
@@ -461,14 +470,11 @@ pub async fn list_distribution_rules(
         .into_iter()
         .map(|r| DistributionRuleResponse {
             id: r.id.to_string(),
-            tenant_id: r.tenant_id.to_string(),
-            beneficiary_id: r.beneficiary_id.to_string(),
-            beneficiary_name: r.beneficiary_id.to_string(), // 使用 ID 作为名称
-            share_ratio: r.share_ratio.to_string().parse().unwrap_or(0.0),
-            priority: r.priority,
-            enabled: r.enabled,
-            effective_from: r.effective_from.to_rfc3339(),
-            effective_until: r.effective_until.map(|d| d.to_rfc3339()),
+            name: r.name,
+            commission_rate: r.commission_rate.to_string().parse().unwrap_or(0.0),
+            min_purchase_amount: None, // 数据库模型中暂无此字段
+            max_commission_amount: None, // 数据库模型中暂无此字段
+            is_active: r.is_active,
             created_at: r.created_at.to_rfc3339(),
         })
         .collect();
@@ -490,9 +496,9 @@ pub async fn create_distribution_rule(
     }
 
     // 验证参数
-    if req.share_ratio < 0.0 || req.share_ratio > 1.0 {
+    if req.commission_rate < 0.0 || req.commission_rate > 1.0 {
         return Err(ApiError::BadRequest(
-            "share_ratio must be between 0.0 and 1.0".to_string(),
+            "commission_rate must be between 0.0 and 1.0".to_string(),
         ));
     }
 
@@ -501,25 +507,16 @@ pub async fn create_distribution_rule(
         .as_ref()
         .ok_or_else(|| ApiError::Internal("Database not available".to_string()))?;
 
-    // 解析时间
-    let effective_from = req
-        .effective_from
-        .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
-        .map(|dt| dt.with_timezone(&chrono::Utc));
-
-    let effective_until = req
-        .effective_until
-        .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
-        .map(|dt| dt.with_timezone(&chrono::Utc));
-
-    // 创建规则
+    // 创建规则 - 使用当前用户作为受益人（简化处理）
     let create_req = keycompute_db::CreateDistributionRuleRequest {
         tenant_id: auth.tenant_id,
-        beneficiary_id: req.beneficiary_id,
-        share_ratio: string_to_bigdecimal(&req.share_ratio.to_string())?,
-        priority: req.priority,
-        effective_from,
-        effective_until,
+        beneficiary_id: auth.user_id, // 使用当前用户作为受益人
+        name: req.name.clone(),
+        description: None,
+        commission_rate: string_to_bigdecimal(&req.commission_rate.to_string())?,
+        priority: Some(0),
+        effective_from: Some(chrono::Utc::now()),
+        effective_until: None,
     };
 
     let rule = keycompute_db::TenantDistributionRule::create(pool, &create_req)
@@ -528,14 +525,11 @@ pub async fn create_distribution_rule(
 
     Ok(Json(DistributionRuleResponse {
         id: rule.id.to_string(),
-        tenant_id: rule.tenant_id.to_string(),
-        beneficiary_id: rule.beneficiary_id.to_string(),
-        beneficiary_name: "New Distributor".to_string(),
-        share_ratio: req.share_ratio,
-        priority: rule.priority,
-        enabled: rule.enabled,
-        effective_from: rule.effective_from.to_rfc3339(),
-        effective_until: rule.effective_until.map(|d| d.to_rfc3339()),
+        name: rule.name,
+        commission_rate: req.commission_rate,
+        min_purchase_amount: req.min_purchase_amount,
+        max_commission_amount: req.max_commission_amount,
+        is_active: rule.is_active,
         created_at: rule.created_at.to_rfc3339(),
     }))
 }
@@ -555,11 +549,11 @@ pub async fn update_distribution_rule(
     }
 
     // 验证参数
-    if let Some(ratio) = req.share_ratio
-        && !(0.0..=1.0).contains(&ratio)
+    if let Some(rate) = req.commission_rate
+        && !(0.0..=1.0).contains(&rate)
     {
         return Err(ApiError::BadRequest(
-            "share_ratio must be between 0.0 and 1.0".to_string(),
+            "commission_rate must be between 0.0 and 1.0".to_string(),
         ));
     }
 
@@ -574,18 +568,14 @@ pub async fn update_distribution_rule(
         .map_err(|e| ApiError::Internal(format!("Database error: {}", e)))?
         .ok_or_else(|| ApiError::NotFound("Distribution rule not found".to_string()))?;
 
-    // 解析过期时间
-    let effective_until = req
-        .effective_until
-        .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
-        .map(|dt| dt.with_timezone(&chrono::Utc));
-
     // 更新规则
     let update_req = keycompute_db::UpdateDistributionRuleRequest {
-        share_ratio: req.share_ratio.and_then(|r| r.to_string().parse().ok()),
-        priority: req.priority,
-        enabled: req.enabled,
-        effective_until,
+        name: req.name,
+        description: None,
+        commission_rate: req.commission_rate.and_then(|r| r.to_string().parse().ok()),
+        priority: None,
+        is_active: req.is_active,
+        effective_until: None,
     };
 
     let updated_rule = rule
@@ -595,14 +585,13 @@ pub async fn update_distribution_rule(
 
     Ok(Json(DistributionRuleResponse {
         id: updated_rule.id.to_string(),
-        tenant_id: updated_rule.tenant_id.to_string(),
-        beneficiary_id: updated_rule.beneficiary_id.to_string(),
-        beneficiary_name: "Updated Distributor".to_string(),
-        share_ratio: req.share_ratio.unwrap_or(0.03),
-        priority: updated_rule.priority,
-        enabled: updated_rule.enabled,
-        effective_from: updated_rule.effective_from.to_rfc3339(),
-        effective_until: updated_rule.effective_until.map(|d| d.to_rfc3339()),
+        name: updated_rule.name,
+        commission_rate: req.commission_rate.unwrap_or_else(|| {
+            updated_rule.commission_rate.to_string().parse().unwrap_or(0.0)
+        }),
+        min_purchase_amount: req.min_purchase_amount,
+        max_commission_amount: req.max_commission_amount,
+        is_active: updated_rule.is_active,
         created_at: updated_rule.created_at.to_rfc3339(),
     }))
 }
@@ -761,11 +750,12 @@ mod tests {
     #[test]
     fn test_create_distribution_rule_request_deserialize() {
         let json = r#"{
-            "beneficiary_id": "550e8400-e29b-41d4-a716-446655440000",
-            "share_ratio": 0.03
+            "name": "默认分销规则",
+            "commission_rate": 0.03
         }"#;
         let req: CreateDistributionRuleRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.share_ratio, 0.03);
+        assert_eq!(req.commission_rate, 0.03);
+        assert_eq!(req.name, "默认分销规则");
     }
 
     #[test]

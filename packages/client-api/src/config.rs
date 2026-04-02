@@ -48,13 +48,13 @@ impl ClientConfig {
 
     /// 验证配置是否有效
     pub fn validate(&self) -> Result<()> {
-        if self.base_url.is_empty() {
-            return Err(ClientError::Config("Base URL cannot be empty".to_string()));
-        }
-        if !self.base_url.starts_with("http://") && !self.base_url.starts_with("https://") {
-            return Err(ClientError::Config(
-                "Base URL must start with http:// or https://".to_string(),
-            ));
+        // 允许空字符串（表示使用相对路径，适用于 Nginx 反向代理场景）
+        if !self.base_url.is_empty() {
+            if !self.base_url.starts_with("http://") && !self.base_url.starts_with("https://") {
+                return Err(ClientError::Config(
+                    "Base URL must start with http:// or https://".to_string(),
+                ));
+            }
         }
         if self.timeout_secs == 0 {
             return Err(ClientError::Config(
@@ -65,10 +65,17 @@ impl ClientConfig {
     }
 
     /// 构建完整 URL
+    /// 空字符串 base_url 表示使用相对路径（适用于 Nginx 反向代理场景）
     pub fn build_url(&self, path: &str) -> String {
-        let base = self.base_url.trim_end_matches('/');
-        let path = path.trim_start_matches('/');
-        format!("{}/{}", base, path)
+        if self.base_url.is_empty() {
+            // 使用相对路径，让浏览器自动使用当前域名
+            let path = path.trim_start_matches('/');
+            format!("/{}", path)
+        } else {
+            let base = self.base_url.trim_end_matches('/');
+            let path = path.trim_start_matches('/');
+            format!("{}/{}", base, path)
+        }
     }
 }
 
@@ -93,9 +100,9 @@ mod tests {
         let config = ClientConfig::new("http://localhost:8080");
         assert!(config.validate().is_ok());
 
-        // 无效配置：空 URL
+        // 有效配置：空 URL（相对路径，适用于 Nginx 反向代理）
         let config = ClientConfig::new("");
-        assert!(config.validate().is_err());
+        assert!(config.validate().is_ok());
 
         // 无效配置：错误协议
         let config = ClientConfig::new("ftp://localhost");
@@ -104,6 +111,7 @@ mod tests {
 
     #[test]
     fn test_build_url() {
+        // 正常 URL
         let config = ClientConfig::new("http://localhost:8080");
         assert_eq!(
             config.build_url("/api/v1/users"),
@@ -119,5 +127,10 @@ mod tests {
             config.build_url("/api/v1/users"),
             "http://localhost:8080/api/v1/users"
         );
+
+        // 空字符串（相对路径）
+        let config = ClientConfig::new("");
+        assert_eq!(config.build_url("/api/v1/users"), "/api/v1/users");
+        assert_eq!(config.build_url("api/v1/users"), "/api/v1/users");
     }
 }

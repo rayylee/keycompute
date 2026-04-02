@@ -315,8 +315,8 @@ pub async fn admin_auth_middleware(
         }
     };
 
-    // 3. 验证 token 并获取认证上下文
-    let auth_context = match state.auth.verify_api_key(token).await {
+    // 3. 验证 token 并获取认证上下文（支持 JWT 和 API Key）
+    let auth_context = match state.auth.verify_token(token).await {
         Ok(ctx) => ctx,
         Err(e) => {
             warn!(error = %e, "Authentication failed for admin route");
@@ -335,8 +335,8 @@ pub async fn admin_auth_middleware(
         }
     };
 
-    // 4. 检查 Admin 角色
-    if auth_context.role != "admin" {
+    // 4. 检查 Admin 角色（支持 "admin" 和 "system"）
+    if auth_context.role != "admin" && auth_context.role != "system" {
         warn!(
             user_id = %auth_context.user_id,
             role = %auth_context.role,

@@ -120,20 +120,13 @@ impl LoginRequest {
 /// 认证响应
 #[derive(Debug, Clone, Deserialize)]
 pub struct AuthResponse {
+    pub user_id: String,
+    pub tenant_id: String,
+    pub email: String,
+    pub role: String,
     pub access_token: String,
-    pub refresh_token: String,
     pub token_type: String,
     pub expires_in: i64,
-    pub user: UserInfo,
-}
-
-/// 用户信息
-#[derive(Debug, Clone, Deserialize)]
-pub struct UserInfo {
-    pub id: String,
-    pub email: String,
-    pub name: Option<String>,
-    pub role: String,
 }
 
 /// 忘记密码请求

@@ -1,6 +1,6 @@
 use client_api::{
     AdminApi,
-    api::admin::{UpdateUserRequest, UserDetail, UserQueryParams},
+    api::admin::{UpdateUserRequest, UserDetail, UserListResponse, UserQueryParams},
 };
 use dioxus::prelude::*;
 use ui::{Badge, BadgeVariant, Button, ButtonSize, ButtonVariant, Pagination, Table, TableHead};
@@ -57,6 +57,7 @@ fn AdminUsersView() -> Element {
             AdminApi::new(&client)
                 .list_all_users(Some(&params), &token)
                 .await
+                .map(|resp: UserListResponse| resp.users)
         })
         .await
     });

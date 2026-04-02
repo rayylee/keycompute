@@ -317,7 +317,7 @@ impl BillingService {
             let level1_ratio = rules
                 .iter()
                 .find(|r| r.beneficiary_id == level1_beneficiary.unwrap_or_else(Uuid::nil))
-                .map(|r| bigdecimal_to_decimal(&r.share_ratio))
+                .map(|r| bigdecimal_to_decimal(&r.commission_rate))
                 .unwrap_or(default_level1_ratio);
 
             let level2_ratio = level2_beneficiary
@@ -325,7 +325,7 @@ impl BillingService {
                     rules
                         .iter()
                         .find(|r| r.beneficiary_id == l2_id)
-                        .map(|r| bigdecimal_to_decimal(&r.share_ratio))
+                        .map(|r| bigdecimal_to_decimal(&r.commission_rate))
                 })
                 .unwrap_or(default_level2_ratio);
 

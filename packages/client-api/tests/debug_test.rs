@@ -16,34 +16,40 @@ async fn test_debug_routing_success() {
     Mock::given(method("GET"))
         .and(path("/debug/routing"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "routes": [
+            "request_id": "550e8400-e29b-41d4-a716-446655440000",
+            "routed": true,
+            "primary": {
+                "provider": "openai",
+                "account_id": "550e8400-e29b-41d4-a716-446655440001",
+                "endpoint": "https://api.openai.com/v1"
+            },
+            "fallback_chain": [],
+            "pricing": {
+                "model_name": "gpt-4o",
+                "currency": "CNY",
+                "input_price_per_1k": "0.01",
+                "output_price_per_1k": "0.03"
+            },
+            "provider_status": [
                 {
-                    "path": "/api/v1/users",
-                    "method": "GET",
-                    "handler": "list_users"
-                },
-                {
-                    "path": "/api/v1/users/:id",
-                    "method": "GET",
-                    "handler": "get_user"
-                },
-                {
-                    "path": "/health",
-                    "method": "GET",
-                    "handler": "health_check"
+                    "provider": "openai",
+                    "is_healthy": true,
+                    "account_count": 2,
+                    "status": "2 个账号"
                 }
-            ]
+            ],
+            "message": null
         })))
         .mount(&mock_server)
         .await;
 
-    let result = debug_api.debug_routing(fixtures::TEST_ACCESS_TOKEN).await;
+    let result = debug_api.debug_routing("gpt-4o", fixtures::TEST_ACCESS_TOKEN).await;
 
     assert!(result.is_ok());
     let info = result.unwrap();
-    assert_eq!(info.routes.len(), 3);
-    assert_eq!(info.routes[0].path, "/api/v1/users");
-    assert_eq!(info.routes[0].method, "GET");
+    assert!(info.routed);
+    assert_eq!(info.provider_status.len(), 1);
+    assert_eq!(info.provider_status[0].provider, "openai");
 }
 
 #[tokio::test]
@@ -183,7 +189,7 @@ async fn test_debug_endpoints_unauthorized() {
         .mount(&mock_server)
         .await;
 
-    let result = debug_api.debug_routing("invalid_token").await;
+    let result = debug_api.debug_routing("gpt-4o", "invalid_token").await;
 
     assert!(matches!(result.unwrap_err(), ClientError::Unauthorized(_)));
 }

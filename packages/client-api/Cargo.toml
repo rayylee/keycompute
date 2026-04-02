@@ -13,6 +13,9 @@ reqwest = { version = "0.12", default-features = false, features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
+# URL 编码
+urlencoding = "2"
+
 # 时间处理
 chrono = { version = "0.4", features = ["serde"] }
 

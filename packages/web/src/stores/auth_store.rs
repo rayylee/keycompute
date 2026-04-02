@@ -12,10 +12,10 @@ pub struct AuthState {
 }
 
 impl AuthState {
-    pub fn logged_in(access_token: String, refresh_token: String) -> Self {
+    pub fn logged_in(access_token: String) -> Self {
         Self {
             access_token: Some(access_token),
-            refresh_token: Some(refresh_token),
+            refresh_token: None,
             is_authenticated: true,
         }
     }
@@ -39,9 +39,9 @@ impl AuthStore {
         Self { state }
     }
 
-    pub fn login(&mut self, access_token: String, refresh_token: String) {
-        Self::save_to_storage(&access_token, &refresh_token);
-        *self.state.write() = AuthState::logged_in(access_token, refresh_token);
+    pub fn login(&mut self, access_token: String) {
+        Self::save_to_storage(&access_token);
+        *self.state.write() = AuthState::logged_in(access_token);
     }
 
     pub fn logout(&mut self) {
@@ -65,29 +65,27 @@ impl AuthStore {
         #[cfg(target_arch = "wasm32")]
         {
             let token = read_local_storage("access_token");
-            let refresh = read_local_storage("refresh_token");
-            if let (Some(access_token), Some(refresh_token)) = (token, refresh) {
-                return AuthState::logged_in(access_token, refresh_token);
+            if let Some(access_token) = token {
+                return AuthState::logged_in(access_token);
             }
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-            if let Some((access, refresh)) = read_native_storage() {
-                return AuthState::logged_in(access, refresh);
+            if let Some(access) = read_native_storage() {
+                return AuthState::logged_in(access);
             }
         }
         AuthState::default()
     }
 
-    fn save_to_storage(access_token: &str, refresh_token: &str) {
+    fn save_to_storage(access_token: &str) {
         #[cfg(target_arch = "wasm32")]
         {
             let _ = write_local_storage("access_token", access_token);
-            let _ = write_local_storage("refresh_token", refresh_token);
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-            write_native_storage(access_token, refresh_token);
+            write_native_storage(access_token);
         }
     }
 
@@ -136,28 +134,27 @@ fn native_storage_path() -> std::path::PathBuf {
     path
 }
 
-/// 从文件读取 (access_token, refresh_token)
+/// 从文件读取 access_token
 #[cfg(not(target_arch = "wasm32"))]
-fn read_native_storage() -> Option<(String, String)> {
+fn read_native_storage() -> Option<String> {
     let path = native_storage_path();
     let data = std::fs::read_to_string(&path).ok()?;
     let parsed: serde_json::Value = serde_json::from_str(&data).ok()?;
     let access = parsed["access_token"].as_str()?.to_string();
-    let refresh = parsed["refresh_token"].as_str()?.to_string();
-    if access.is_empty() || refresh.is_empty() {
+    if access.is_empty() {
         return None;
     }
-    Some((access, refresh))
+    Some(access)
 }
 
 /// 将 token 写入文件
 #[cfg(not(target_arch = "wasm32"))]
-fn write_native_storage(access_token: &str, refresh_token: &str) {
+fn write_native_storage(access_token: &str) {
     let path = native_storage_path();
     let content = format!(
-        r#"{{"access_token":"{}","refresh_token":"{}"}}
+        r#"{{"access_token":"{}"}}
 "#,
-        access_token, refresh_token
+        access_token
     );
     let _ = std::fs::write(&path, content);
 }

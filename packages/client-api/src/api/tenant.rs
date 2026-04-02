@@ -153,7 +153,8 @@ impl TenantQueryParams {
 pub struct TenantInfo {
     pub id: String,
     pub name: String,
-    pub status: String,
+    pub description: Option<String>,
+    pub user_count: i64,
+    pub is_active: bool,
     pub created_at: String,
-    pub updated_at: String,
 }

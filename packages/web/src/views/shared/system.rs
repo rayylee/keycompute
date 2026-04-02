@@ -40,7 +40,8 @@ pub fn System() -> Element {
 
     let routing_info = use_resource(move || async move {
         with_auto_refresh(auth_store, |token| async move {
-            debug_service::routing(&token).await
+            // 使用默认模型进行路由调试
+            debug_service::routing("gpt-4o", &token).await
         })
         .await
     });
@@ -125,36 +126,92 @@ pub fn System() -> Element {
             h2 { class: "section-title", "路由调试" }
             div { class: "card",
                 div { class: "card-header",
-                    h3 { class: "card-title", "路由规则列表" }
+                    h3 { class: "card-title", "Provider 状态诊断" }
                 }
                 div { class: "card-body",
                     match routing_info() {
                         None => rsx! { p { class: "text-secondary", "加载中..." } },
-                        Some(Err(_)) => rsx! { p { class: "text-secondary", "加载失败" } },
+                        Some(Err(ref e)) => rsx! { 
+                            div { class: "alert alert-error",
+                                p { "加载失败: {e}" }
+                            }
+                        },
                         Some(Ok(ref info)) => rsx! {
-                            {
-                                let is_empty = info.routes.is_empty();
-                                rsx! {
-                                    Table {
-                                        empty: is_empty,
-                                        empty_text: "无路由数据".to_string(),
-                                        col_count: 3,
-                                        thead {
+                            div {
+                                // 路由结果
+                                if info.routed {
+                                    div { class: "alert alert-success",
+                                        p { "✓ 路由成功" }
+                                        if let Some(ref primary) = info.primary {
+                                            p { class: "text-sm",
+                                                "主目标: {primary.provider} ({primary.endpoint})"
+                                            }
+                                        }
+                                        if !info.fallback_chain.is_empty() {
+                                            p { class: "text-sm",
+                                                "备用链路: {info.fallback_chain.len()} 个"
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    div { class: "alert alert-warning",
+                                        p { "✗ 路由失败" }
+                                        if let Some(ref msg) = info.message {
+                                            p { class: "text-sm", "{msg}" }
+                                        }
+                                    }
+                                }
+
+                                // Provider 状态表格
+                                h4 { class: "subsection-title", "Provider 状态" }
+                                Table {
+                                    empty: info.provider_status.is_empty(),
+                                    empty_text: "未配置任何 Provider".to_string(),
+                                    col_count: 4,
+                                    thead {
+                                        tr {
+                                            TableHead { "Provider" }
+                                            TableHead { "健康状态" }
+                                            TableHead { "账号数量" }
+                                            TableHead { "状态" }
+                                        }
+                                    }
+                                    tbody {
+                                        for ps in info.provider_status.iter() {
                                             tr {
-                                                TableHead { "方法" }
-                                                TableHead { "路径" }
-                                                TableHead { "处理器" }
-                                            }
-                                        }
-                                        tbody {
-                                            for r in info.routes.iter() {
-                                                tr {
-                                                    td { Badge { variant: BadgeVariant::Info, "{r.method}" } }
-                                                    td { code { "{r.path}" } }
-                                                    td { "{r.handler}" }
+                                                td { "{ps.provider}" }
+                                                td {
+                                                    if ps.is_healthy {
+                                                        Badge { variant: BadgeVariant::Success, "健康" }
+                                                    } else {
+                                                        Badge { variant: BadgeVariant::Error, "不健康" }
+                                                    }
                                                 }
+                                                td { "{ps.account_count}" }
+                                                td { "{ps.status}" }
                                             }
                                         }
+                                    }
+                                }
+
+                                // 定价信息
+                                h4 { class: "subsection-title", "定价信息" }
+                                div { class: "info-grid",
+                                    div { class: "info-item",
+                                        span { class: "info-label", "模型" }
+                                        span { class: "info-value", "{info.pricing.model_name}" }
+                                    }
+                                    div { class: "info-item",
+                                        span { class: "info-label", "货币" }
+                                        span { class: "info-value", "{info.pricing.currency}" }
+                                    }
+                                    div { class: "info-item",
+                                        span { class: "info-label", "输入价格" }
+                                        span { class: "info-value", "{info.pricing.input_price_per_1k} / 1K tokens" }
+                                    }
+                                    div { class: "info-item",
+                                        span { class: "info-label", "输出价格" }
+                                        span { class: "info-value", "{info.pricing.output_price_per_1k} / 1K tokens" }
                                     }
                                 }
                             }

@@ -75,15 +75,15 @@ pub fn DistributionRecords() -> Element {
     });
 
     let total_earnings = match earnings() {
-        Some(Ok(ref e)) => format!("¥{:.2}", e.total_earnings),
+        Some(Ok(ref e)) => format!("¥{}", e.total_earnings),
         _ => "¥ 0.00".to_string(),
     };
     let available = match earnings() {
-        Some(Ok(ref e)) => format!("¥{:.2}", e.available_earnings),
+        Some(Ok(ref e)) => format!("¥{}", e.available_earnings),
         _ => "¥ 0.00".to_string(),
     };
     let pending = match earnings() {
-        Some(Ok(ref e)) => format!("¥{:.2}", e.pending_earnings),
+        Some(Ok(ref e)) => format!("¥{}", e.pending_earnings),
         _ => "¥ 0.00".to_string(),
     };
 

@@ -44,7 +44,15 @@ impl PaymentApi {
         } else {
             "/api/v1/payments/orders".to_string()
         };
-        self.client.get_json(&path, Some(token)).await
+        // 后端返回 { orders: Vec<PaymentOrderItem>, total: i64 }
+        #[derive(Deserialize)]
+        struct PaymentOrderListResponse {
+            orders: Vec<PaymentOrderSummary>,
+            #[allow(dead_code)]
+            total: i64,
+        }
+        let resp: PaymentOrderListResponse = self.client.get_json(&path, Some(token)).await?;
+        Ok(resp.orders)
     }
 
     /// 获取订单详情
@@ -169,16 +177,20 @@ pub struct PaymentOrderResponse {
 pub struct PaymentOrderSummary {
     pub id: String,
     pub out_trade_no: String,
-    pub amount: f64,
-    pub currency: String,
+    pub amount: String,
     pub status: String,
+    pub subject: String,
     pub created_at: String,
+    pub expired_at: String,
 }
 
 /// 余额响应
 #[derive(Debug, Clone, Deserialize)]
 pub struct BalanceResponse {
-    pub balance: f64,
-    pub currency: String,
-    pub frozen_balance: f64,
+    pub user_id: String,
+    pub available_balance: String,
+    pub frozen_balance: String,
+    pub total_balance: String,
+    pub total_recharged: String,
+    pub total_consumed: String,
 }

@@ -9,6 +9,42 @@ use crate::stores::ui_store::UiStore;
 use crate::stores::user_store::UserStore;
 use crate::utils::time::format_time;
 
+/// Provider 选项列表（后端支持的 provider）
+const PROVIDERS: &[(&str, &str)] = &[
+    ("openai", "OpenAI"),
+    ("claude", "Anthropic Claude"),
+    ("deepseek", "DeepSeek"),
+    ("gemini", "Google Gemini"),
+    ("vllm", "vLLM"),
+    ("ollama", "Ollama"),
+];
+
+/// 根据 provider 获取默认模型列表
+fn default_models_for(provider: &str) -> Vec<String> {
+    match provider {
+        "openai" => vec!["gpt-4o".into(), "gpt-4o-mini".into(), "gpt-4-turbo".into()],
+        "claude" => vec!["claude-3-5-sonnet-latest".into(), "claude-3-opus-latest".into()],
+        "deepseek" => vec!["deepseek-chat".into(), "deepseek-coder".into()],
+        "gemini" => vec!["gemini-1.5-pro".into(), "gemini-1.5-flash".into()],
+        "vllm" => vec![], // 用户需自行配置
+        "ollama" => vec![], // 用户需自行配置
+        _ => vec![],
+    }
+}
+
+/// 根据 provider 获取模型提示文本
+fn models_placeholder_for(provider: &str) -> &'static str {
+    match provider {
+        "openai" => "如: gpt-4o, gpt-4o-mini, gpt-4-turbo",
+        "claude" => "如: claude-3-5-sonnet-latest, claude-3-opus-latest",
+        "deepseek" => "如: deepseek-chat, deepseek-coder",
+        "gemini" => "如: gemini-1.5-pro, gemini-1.5-flash",
+        "vllm" => "输入 vLLM 支持的模型名称，多个用逗号分隔",
+        "ollama" => "输入 Ollama 模型名称，多个用逗号分隔",
+        _ => "输入模型名称，多个用逗号分隔",
+    }
+}
+
 /// 账号管理页面（LLM 渠道配置）
 ///
 /// - 普通用户：无权限提示
@@ -38,9 +74,10 @@ fn AdminAccountsView() -> Element {
     let mut ui_store = use_context::<UiStore>();
     let mut show_create = use_signal(|| false);
     let mut create_name = use_signal(String::new);
-    let mut create_provider = use_signal(String::new);
+    let mut create_provider = use_signal(|| "openai".to_string());
     let mut create_api_key = use_signal(String::new);
     let mut create_api_base = use_signal(String::new);
+    let mut create_models_input = use_signal(String::new); // 逗号分隔的模型列表
     let mut saving = use_signal(|| false);
     let mut error_msg = use_signal(String::new);
     let mut page = use_signal(|| 1u32);
@@ -73,16 +110,29 @@ fn AdminAccountsView() -> Element {
         let provider = create_provider();
         let api_key_val = create_api_key();
         let api_base = create_api_base();
+        let models_str = create_models_input();
         if name.is_empty() || provider.is_empty() || api_key_val.is_empty() {
             *error_msg.write() = "请填写必填项".to_string();
             return;
         }
+        // 解析模型列表（逗号分隔，去空格，去空项）
+        let models: Vec<String> = if models_str.trim().is_empty() {
+            // 没有填写时使用 provider 默认模型
+            default_models_for(&provider)
+        } else {
+            models_str
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        };
         let token = auth_store.token().unwrap_or_default();
         *saving.write() = true;
         *error_msg.write() = String::new();
         spawn(async move {
             use client_api::api::admin::CreateAccountRequest;
-            let mut req = CreateAccountRequest::new(name, provider, api_key_val);
+            let mut req = CreateAccountRequest::new(name, provider, api_key_val)
+                .with_models(models);
             if !api_base.is_empty() {
                 req = req.with_api_base(api_base);
             }
@@ -90,9 +140,10 @@ fn AdminAccountsView() -> Element {
                 Ok(_) => {
                     *show_create.write() = false;
                     create_name.write().clear();
-                    create_provider.write().clear();
+                    *create_provider.write() = "openai".to_string();
                     create_api_key.write().clear();
                     create_api_base.write().clear();
+                    create_models_input.write().clear();
                     page.set(1);
                     accounts.restart();
                     ui_store.show_success("渠道已创建");
@@ -308,12 +359,32 @@ fn AdminAccountsView() -> Element {
                         }
                         div { class: "form-group",
                             label { class: "form-label", "Provider *" }
+                            select {
+                                class: "input-field",
+                                value: "{create_provider}",
+                                onchange: move |e| {
+                                    *create_provider.write() = e.value();
+                                    // 切换 provider 时自动填充默认模型
+                                    *create_models_input.write() = default_models_for(&e.value()).join(", ");
+                                },
+                                for (value, label) in PROVIDERS {
+                                    option {
+                                        value: "{value}",
+                                        selected: *value == create_provider(),
+                                        "{label}"
+                                    }
+                                }
+                            }
+                        }
+                        div { class: "form-group",
+                            label { class: "form-label", "支持模型（可选，留空使用默认）" }
                             input {
                                 class: "input-field",
-                                placeholder: "如 openai、azure、anthropic",
-                                value: "{create_provider}",
-                                oninput: move |e| *create_provider.write() = e.value(),
+                                placeholder: "{models_placeholder_for(&create_provider())}",
+                                value: "{create_models_input}",
+                                oninput: move |e| *create_models_input.write() = e.value(),
                             }
+                            small { class: "form-hint", "多个模型用逗号分隔，留空则使用该 Provider 的默认模型" }
                         }
                         div { class: "form-group",
                             label { class: "form-label", "API Key *" }

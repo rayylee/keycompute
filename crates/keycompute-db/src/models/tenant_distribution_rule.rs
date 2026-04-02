@@ -10,9 +10,11 @@ pub struct TenantDistributionRule {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub beneficiary_id: Uuid,
-    pub share_ratio: BigDecimal,
+    pub name: String,
+    pub description: Option<String>,
+    pub commission_rate: BigDecimal,
     pub priority: i32,
-    pub enabled: bool,
+    pub is_active: bool,
     pub effective_from: DateTime<Utc>,
     pub effective_until: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
@@ -24,7 +26,9 @@ pub struct TenantDistributionRule {
 pub struct CreateDistributionRuleRequest {
     pub tenant_id: Uuid,
     pub beneficiary_id: Uuid,
-    pub share_ratio: BigDecimal,
+    pub name: String,
+    pub description: Option<String>,
+    pub commission_rate: BigDecimal,
     pub priority: Option<i32>,
     pub effective_from: Option<DateTime<Utc>>,
     pub effective_until: Option<DateTime<Utc>>,
@@ -33,9 +37,11 @@ pub struct CreateDistributionRuleRequest {
 /// 更新分销规则请求
 #[derive(Debug, Clone, Deserialize)]
 pub struct UpdateDistributionRuleRequest {
-    pub share_ratio: Option<BigDecimal>,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub commission_rate: Option<BigDecimal>,
     pub priority: Option<i32>,
-    pub enabled: Option<bool>,
+    pub is_active: Option<bool>,
     pub effective_until: Option<DateTime<Utc>>,
 }
 
@@ -48,16 +54,18 @@ impl TenantDistributionRule {
         let rule = sqlx::query_as::<_, TenantDistributionRule>(
             r#"
             INSERT INTO tenant_distribution_rules (
-                tenant_id, beneficiary_id, share_ratio,
+                tenant_id, beneficiary_id, name, description, commission_rate,
                 priority, effective_from, effective_until
             )
-            VALUES ($1, $2, $3, $4, $5, $6)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING *
             "#,
         )
         .bind(req.tenant_id)
         .bind(req.beneficiary_id)
-        .bind(&req.share_ratio)
+        .bind(&req.name)
+        .bind(&req.description)
+        .bind(&req.commission_rate)
         .bind(req.priority.unwrap_or(0))
         .bind(req.effective_from.unwrap_or_else(Utc::now))
         .bind(req.effective_until)
@@ -91,7 +99,7 @@ impl TenantDistributionRule {
             r#"
             SELECT * FROM tenant_distribution_rules
             WHERE tenant_id = $1
-              AND enabled = TRUE
+              AND is_active = TRUE
               AND effective_from <= NOW()
               AND (effective_until IS NULL OR effective_until > NOW())
             ORDER BY priority DESC, created_at ASC
@@ -128,18 +136,22 @@ impl TenantDistributionRule {
         let rule = sqlx::query_as::<_, TenantDistributionRule>(
             r#"
             UPDATE tenant_distribution_rules
-            SET share_ratio = COALESCE($1, share_ratio),
-                priority = COALESCE($2, priority),
-                enabled = COALESCE($3, enabled),
-                effective_until = COALESCE($4, effective_until),
+            SET name = COALESCE($1, name),
+                description = COALESCE($2, description),
+                commission_rate = COALESCE($3, commission_rate),
+                priority = COALESCE($4, priority),
+                is_active = COALESCE($5, is_active),
+                effective_until = COALESCE($6, effective_until),
                 updated_at = NOW()
-            WHERE id = $5
+            WHERE id = $7
             RETURNING *
             "#,
         )
-        .bind(&req.share_ratio)
+        .bind(&req.name)
+        .bind(&req.description)
+        .bind(&req.commission_rate)
         .bind(req.priority)
-        .bind(req.enabled)
+        .bind(req.is_active)
         .bind(req.effective_until)
         .bind(self.id)
         .fetch_one(pool)
@@ -160,7 +172,7 @@ impl TenantDistributionRule {
 
     /// 检查规则是否有效
     pub fn is_effective(&self) -> bool {
-        if !self.enabled {
+        if !self.is_active {
             return false;
         }
 

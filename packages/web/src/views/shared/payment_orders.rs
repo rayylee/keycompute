@@ -178,7 +178,7 @@ pub fn PaymentOrders() -> Element {
                                 tr {
                                     TableHead { "订单号" }
                                     TableHead { "金额" }
-                                    TableHead { "货币" }
+                                    TableHead { "主题" }
                                     TableHead { "状态" }
                                     TableHead { "创建时间" }
                                 }
@@ -188,8 +188,8 @@ pub fn PaymentOrders() -> Element {
                                     for o in list.iter().skip(my_start).take(PAGE_SIZE) {
                                         tr {
                                             td { code { "{o.out_trade_no}" } }
-                                            td { "¥{o.amount:.2}" }
-                                            td { "{o.currency}" }
+                                            td { "¥{o.amount}" }
+                                            td { "{o.subject}" }
                                             td {
                                                 Badge {
                                                     variant: status_to_variant(&o.status),

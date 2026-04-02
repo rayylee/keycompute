@@ -119,10 +119,10 @@ pub fn Tenants() -> Element {
                                 td { code { "{t.id}" } }
                                 td { "{t.name}" }
                                 td {
-                                    if t.status == "active" {
+                                    if t.is_active {
                                         Badge { variant: BadgeVariant::Success, "活跃" }
                                     } else {
-                                        Badge { variant: BadgeVariant::Neutral, "{t.status}" }
+                                        Badge { variant: BadgeVariant::Neutral, "已禁用" }
                                     }
                                 }
                                 td { { format_time(&t.created_at) } }

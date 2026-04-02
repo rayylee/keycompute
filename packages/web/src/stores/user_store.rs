@@ -17,7 +17,7 @@ impl UserInfo {
 
     #[allow(dead_code)]
     pub fn is_admin(&self) -> bool {
-        self.role == "admin"
+        self.role == "admin" || self.role == "system"
     }
 
     pub fn avatar_char(&self) -> char {

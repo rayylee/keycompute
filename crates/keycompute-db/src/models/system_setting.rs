@@ -65,6 +65,7 @@ pub mod setting_keys {
 
     // 注册设置
     pub const ALLOW_REGISTRATION: &str = "allow_registration";
+    pub const REGISTRATION_MODE: &str = "registration_mode";
     pub const EMAIL_VERIFICATION_REQUIRED: &str = "email_verification_required";
     pub const DEFAULT_USER_QUOTA: &str = "default_user_quota";
     pub const DEFAULT_USER_ROLE: &str = "default_user_role";
@@ -88,10 +89,12 @@ pub mod setting_keys {
     pub const WECHATPAY_ENABLED: &str = "wechatpay_enabled";
     pub const MIN_RECHARGE_AMOUNT: &str = "min_recharge_amount";
     pub const MAX_RECHARGE_AMOUNT: &str = "max_recharge_amount";
+    pub const DEFAULT_CURRENCY: &str = "default_currency";
 
     // 安全设置
     pub const LOGIN_FAILED_LIMIT: &str = "login_failed_limit";
     pub const LOGIN_LOCKOUT_MINUTES: &str = "login_lockout_minutes";
+    pub const JWT_EXPIRE_HOURS: &str = "jwt_expire_hours";
     // 密码策略使用硬编码，参见 keycompute-auth/src/password/validator.rs
 
     // 公告设置
@@ -239,22 +242,25 @@ impl SystemSetting {
         Ok(settings)
     }
 
-    /// 更新设置值
+    /// 更新设置值（如果不存在则创建）
     pub async fn update_value(
         pool: &sqlx::PgPool,
         key: &str,
         value: &str,
     ) -> Result<SystemSetting, sqlx::Error> {
+        // 使用 INSERT ... ON CONFLICT 实现 UPSERT
         let setting = sqlx::query_as::<_, SystemSetting>(
             r#"
-            UPDATE system_settings 
-            SET value = $1, updated_at = NOW()
-            WHERE key = $2
+            INSERT INTO system_settings (key, value, value_type, description, created_at, updated_at)
+            VALUES ($1, $2, 'string', '', NOW(), NOW())
+            ON CONFLICT (key) DO UPDATE SET
+                value = EXCLUDED.value,
+                updated_at = NOW()
             RETURNING *
             "#,
         )
-        .bind(value)
         .bind(key)
+        .bind(value)
         .fetch_one(pool)
         .await?;
 
@@ -275,6 +281,64 @@ impl SystemSetting {
         }
 
         Ok(updated)
+    }
+
+    /// 初始化默认设置
+    ///
+    /// 如果设置不存在，则使用默认值创建
+    pub async fn init_default_settings(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
+        let defaults = vec![
+            // 站点设置
+            (setting_keys::SITE_NAME, "KeyCompute", "string"),
+            (setting_keys::SITE_DESCRIPTION, "AI 模型聚合平台", "string"),
+            // 注册设置
+            (setting_keys::ALLOW_REGISTRATION, "true", "bool"),
+            (setting_keys::REGISTRATION_MODE, "open", "string"),
+            (setting_keys::EMAIL_VERIFICATION_REQUIRED, "true", "bool"),
+            (setting_keys::DEFAULT_USER_QUOTA, "100", "int"),
+            (setting_keys::DEFAULT_USER_ROLE, "user", "string"),
+            // 限流设置
+            (setting_keys::DEFAULT_RPM_LIMIT, "60", "int"),
+            (setting_keys::DEFAULT_TPM_LIMIT, "10000", "int"),
+            // 系统状态
+            (setting_keys::MAINTENANCE_MODE, "false", "bool"),
+            (setting_keys::MAINTENANCE_MESSAGE, "系统维护中，请稍后再试", "string"),
+            // 支付设置
+            (setting_keys::MIN_RECHARGE_AMOUNT, "1.0", "decimal"),
+            (setting_keys::MAX_RECHARGE_AMOUNT, "10000.0", "decimal"),
+            (setting_keys::DEFAULT_CURRENCY, "CNY", "string"),
+            // 安全设置
+            (setting_keys::LOGIN_FAILED_LIMIT, "5", "int"),
+            (setting_keys::LOGIN_LOCKOUT_MINUTES, "30", "int"),
+            (setting_keys::JWT_EXPIRE_HOURS, "72", "int"),
+            // 公告设置
+            (setting_keys::SYSTEM_NOTICE_ENABLED, "false", "bool"),
+            // 分销设置 - 默认分销比例 (与 RuleEngine 硬编码保持一致)
+            (setting_keys::DISTRIBUTION_ENABLED, "true", "bool"),
+            (setting_keys::DISTRIBUTION_LEVEL1_DEFAULT_RATIO, "0.03", "decimal"),  // 一级分销默认 3%
+            (setting_keys::DISTRIBUTION_LEVEL2_DEFAULT_RATIO, "0.02", "decimal"),  // 二级分销默认 2%
+            (setting_keys::DISTRIBUTION_MIN_WITHDRAW, "100.0", "decimal"),         // 最小提现金额 100元
+        ];
+
+        for (key, value, value_type) in defaults {
+            // 检查设置是否已存在
+            if Self::find_by_key(pool, key).await?.is_none() {
+                // 不存在则创建
+                sqlx::query(
+                    r#"
+                    INSERT INTO system_settings (key, value, value_type, description, created_at, updated_at)
+                    VALUES ($1, $2, $3, '', NOW(), NOW())
+                    "#,
+                )
+                .bind(key)
+                .bind(value)
+                .bind(value_type)
+                .execute(pool)
+                .await?;
+            }
+        }
+
+        Ok(())
     }
 
     /// 获取设置的字符串值，不存在则返回默认值

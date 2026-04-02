@@ -142,9 +142,11 @@ CREATE TABLE tenant_distribution_rules (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL,
     beneficiary_id UUID NOT NULL,
-    share_ratio DECIMAL(5, 4) NOT NULL,
+    name VARCHAR(255) NOT NULL DEFAULT '默认分销规则',
+    description TEXT,
+    commission_rate DECIMAL(5, 4) NOT NULL,
     priority INTEGER NOT NULL DEFAULT 0,
-    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     effective_from TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     effective_until TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -153,7 +155,7 @@ CREATE TABLE tenant_distribution_rules (
 );
 
 CREATE INDEX idx_tenant_distribution_rules_tenant ON tenant_distribution_rules(tenant_id);
-CREATE INDEX idx_tenant_distribution_rules_enabled ON tenant_distribution_rules(enabled) WHERE enabled = TRUE;
+CREATE INDEX idx_tenant_distribution_rules_active ON tenant_distribution_rules(is_active) WHERE is_active = TRUE;
 -- user_credentials: 用户密码凭证表
 -- 存储用户密码哈希和登录安全相关信息
 
@@ -170,7 +172,7 @@ CREATE TABLE user_credentials (
     locked_until TIMESTAMPTZ,
     -- 最后登录信息
     last_login_at TIMESTAMPTZ,
-    last_login_ip INET,
+    last_login_ip TEXT,
     -- 时间戳
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

@@ -5,14 +5,19 @@
 //! 2. 初始化可观测性（日志、指标、追踪）
 //! 3. 建立数据库连接并运行迁移
 //! 4. 初始化所有业务模块（Auth、RateLimit、Pricing、Routing、Gateway、Billing 等）
-//! 5. 启动 HTTP 服务器
+//! 5. 初始化默认系统管理员（如果配置）
+//! 6. 启动 HTTP 服务器
 
+use keycompute_auth::PasswordHasher;
 use keycompute_config::AppConfig;
-use keycompute_db::{DatabaseConfig as DbConfig, DatabaseManager};
+use keycompute_db::{
+    CreateDistributionRuleRequest, CreateTenantRequest, CreateUserCredentialRequest, CreateUserRequest,
+    DatabaseConfig as DbConfig, DatabaseManager, SystemSetting, Tenant, TenantDistributionRule, User,
+};
 use keycompute_observability::{init_dev_observability, init_observability};
 use keycompute_server::{AppState, AppStateConfig, init_global_crypto, run};
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -93,7 +98,19 @@ async fn main() -> anyhow::Result<()> {
 
     let pool = Arc::new(db_manager.pool().clone());
 
-    // ==================== 阶段 5: 初始化应用状态 ====================
+    // ==================== 阶段 5: 初始化默认系统管理员 ====================
+    if let Err(e) = initialize_default_admin(&pool).await {
+        warn!("默认管理员初始化失败: {}", e);
+    }
+
+    // ==================== 阶段 5.5: 初始化系统默认设置 ====================
+    info!("正在初始化系统默认设置...");
+    match SystemSetting::init_default_settings(&pool).await {
+        Ok(_) => info!("系统默认设置初始化完成"),
+        Err(e) => warn!("系统默认设置初始化失败（非致命错误）: {}", e),
+    }
+
+    // ==================== 阶段 6: 初始化应用状态 ====================
     info!("正在初始化应用状态...");
 
     let state_config = AppStateConfig::from_config(&config);
@@ -110,7 +127,7 @@ async fn main() -> anyhow::Result<()> {
 
     info!("应用状态初始化完成");
 
-    // ==================== 阶段 6: 启动服务器 ====================
+    // ==================== 阶段 7: 启动服务器 ====================
     info!("准备启动服务器...");
 
     let server_config = config.server.clone();
@@ -165,4 +182,157 @@ fn setup_shutdown_handler() -> tokio::sync::oneshot::Receiver<()> {
     });
 
     rx
+}
+
+/// 初始化默认系统管理员
+///
+/// 从环境变量读取默认管理员邮箱和密码，如果管理员不存在则创建。
+/// 环境变量：
+/// - KC__DEFAULT_ADMIN_EMAIL: 管理员邮箱
+/// - KC__DEFAULT_ADMIN_PASSWORD: 管理员密码
+async fn initialize_default_admin(pool: &sqlx::PgPool) -> anyhow::Result<()> {
+    // 从环境变量读取配置
+    let admin_email = std::env::var("KC__DEFAULT_ADMIN_EMAIL").unwrap_or_else(|_| "admin@keycompute.local".to_string());
+    let admin_password = std::env::var("KC__DEFAULT_ADMIN_PASSWORD").unwrap_or_else(|_| "12345".to_string());
+
+    info!(email = %admin_email, "检查默认管理员账户");
+
+    // 检查管理员是否已存在
+    if User::find_by_email(pool, &admin_email).await?.is_some() {
+        info!(email = %admin_email, "默认管理员已存在，跳过初始化");
+        return Ok(());
+    }
+
+    info!(email = %admin_email, "创建默认系统管理员");
+
+    // 创建默认租户
+    let tenant = Tenant::create(pool, &CreateTenantRequest {
+        name: "System".to_string(),
+        slug: "system".to_string(),
+        description: Some("System default tenant".to_string()),
+        default_rpm_limit: None,
+        default_tpm_limit: None,
+        distribution_enabled: None,
+    }).await?;
+
+    info!(tenant_id = %tenant.id, "默认租户创建成功");
+
+    // 创建管理员用户（role="system" 表示系统管理员）
+    let user = User::create(pool, &CreateUserRequest {
+        tenant_id: tenant.id,
+        email: admin_email.clone(),
+        name: Some("System Administrator".to_string()),
+        role: Some("system".to_string()),
+    }).await?;
+
+    info!(user_id = %user.id, "管理员用户创建成功");
+
+    // 哈希密码
+    let hasher = PasswordHasher::new();
+    let password_hash = hasher.hash(&admin_password)?;
+
+    // 创建用户凭证
+    let credential = keycompute_db::UserCredential::create(pool, &CreateUserCredentialRequest {
+        user_id: user.id,
+        password_hash,
+    }).await?;
+
+    // 标记邮箱已验证
+    use keycompute_db::UpdateUserCredentialRequest;
+    credential.update(pool, &UpdateUserCredentialRequest {
+        email_verified: Some(true),
+        email_verified_at: Some(chrono::Utc::now()),
+        ..Default::default()
+    }).await?;
+
+    // 创建默认分销规则（基于系统设置中的比例）
+    initialize_default_distribution_rules(pool, tenant.id, user.id).await?;
+
+    info!(
+        user_id = %user.id,
+        email = %admin_email,
+        tenant_id = %tenant.id,
+        "默认系统管理员初始化成功"
+    );
+
+    Ok(())
+}
+
+/// 初始化默认分销规则
+///
+/// 基于 system_settings 中的配置创建一级和二级分销规则
+async fn initialize_default_distribution_rules(
+    pool: &sqlx::PgPool,
+    tenant_id: uuid::Uuid,
+    admin_user_id: uuid::Uuid,
+) -> anyhow::Result<()> {
+    use bigdecimal::BigDecimal;
+    use std::str::FromStr;
+
+    // 检查是否已存在分销规则
+    let existing_rules = TenantDistributionRule::find_all_by_tenant(pool, tenant_id).await?;
+    if !existing_rules.is_empty() {
+        info!(tenant_id = %tenant_id, "分销规则已存在，跳过初始化");
+        return Ok(());
+    }
+
+    // 从系统设置获取默认分销比例（与 RuleEngine 硬编码保持一致：3% 和 2%）
+    let level1_ratio_str = SystemSetting::get_string(
+        pool,
+        "distribution_level1_default_ratio",
+        "0.03",
+    ).await;
+
+    let level2_ratio_str = SystemSetting::get_string(
+        pool,
+        "distribution_level2_default_ratio",
+        "0.02",
+    ).await;
+
+    let level1_ratio = BigDecimal::from_str(&level1_ratio_str).unwrap_or_else(|_| BigDecimal::from_str("0.03").unwrap());
+    let level2_ratio = BigDecimal::from_str(&level2_ratio_str).unwrap_or_else(|_| BigDecimal::from_str("0.02").unwrap());
+
+    info!(
+        tenant_id = %tenant_id,
+        level1_ratio = %level1_ratio,
+        level2_ratio = %level2_ratio,
+        "正在创建默认分销规则"
+    );
+
+    // 创建一级分销规则
+    let level1_rule = CreateDistributionRuleRequest {
+        tenant_id,
+        beneficiary_id: admin_user_id,
+        name: "一级分销规则".to_string(),
+        description: Some("默认一级分销规则，推荐人可获得指定比例的分销佣金".to_string()),
+        commission_rate: level1_ratio,
+        priority: Some(10),
+        effective_from: Some(chrono::Utc::now()),
+        effective_until: None,
+    };
+
+    match TenantDistributionRule::create(pool, &level1_rule).await {
+        Ok(rule) => info!(rule_id = %rule.id, "一级分销规则创建成功"),
+        Err(e) => warn!("一级分销规则创建失败: {}", e),
+    }
+
+    // 创建二级分销规则
+    let level2_rule = CreateDistributionRuleRequest {
+        tenant_id,
+        beneficiary_id: admin_user_id,
+        name: "二级分销规则".to_string(),
+        description: Some("默认二级分销规则，间接推荐人可获得指定比例的分销佣金".to_string()),
+        commission_rate: level2_ratio,
+        priority: Some(5),
+        effective_from: Some(chrono::Utc::now()),
+        effective_until: None,
+    };
+
+    match TenantDistributionRule::create(pool, &level2_rule).await {
+        Ok(rule) => info!(rule_id = %rule.id, "二级分销规则创建成功"),
+        Err(e) => warn!("二级分销规则创建失败: {}", e),
+    }
+
+    info!(tenant_id = %tenant_id, "默认分销规则初始化完成");
+    Ok(())
 }

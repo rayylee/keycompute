@@ -596,13 +596,13 @@ pub async fn create_account(
         .map_err(|e| ApiError::Internal(format!("Failed to create account: {}", e)))?;
 
     Ok(Json(serde_json::json!({
-        "success": true,
-        "message": "Account created",
-        "account_id": account.id,
+        "id": account.id,
         "name": account.name,
         "provider": account.provider,
-        "models": account.models_supported,
-        "created_by": auth.user_id,
+        "status": if account.enabled { "active" } else { "inactive" },
+        "is_active": account.enabled,
+        "created_at": account.created_at.to_rfc3339(),
+        "updated_at": account.updated_at.to_rfc3339(),
     })))
 }
 
@@ -1515,7 +1515,7 @@ impl AdminSystemSettings {
 pub async fn get_system_settings(
     auth: AuthExtractor,
     State(state): State<AppState>,
-) -> Result<Json<AdminSystemSettings>> {
+) -> Result<Json<std::collections::HashMap<String, serde_json::Value>>> {
     if !auth.is_admin() {
         return Err(ApiError::Auth("Admin permission required".to_string()));
     }
@@ -1529,8 +1529,30 @@ pub async fn get_system_settings(
         .await
         .map_err(|e| ApiError::Internal(format!("Failed to query settings: {}", e)))?;
 
-    let admin_settings = AdminSystemSettings::from_settings(&settings);
-    Ok(Json(admin_settings))
+    // 将设置列表转换为 HashMap<key, value>
+    // value 根据 value_type 转换为对应的 JSON 类型
+    let map: std::collections::HashMap<String, serde_json::Value> = settings
+        .into_iter()
+        .map(|s| {
+            let val = match s.value_type.as_str() {
+                "bool" => match s.value.as_str() {
+                    "true" | "1" | "yes" => serde_json::Value::Bool(true),
+                    _ => serde_json::Value::Bool(false),
+                },
+                "int" | "decimal" => {
+                    if let Ok(n) = s.value.parse::<f64>() {
+                        serde_json::json!(n)
+                    } else {
+                        serde_json::Value::String(s.value)
+                    }
+                }
+                _ => serde_json::Value::String(s.value),
+            };
+            (s.key, val)
+        })
+        .collect();
+
+    Ok(Json(map))
 }
 
 /// 更新系统设置（管理员）

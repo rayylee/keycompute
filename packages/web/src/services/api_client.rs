@@ -1,7 +1,8 @@
 use std::sync::LazyLock;
 
+use client_api::api::auth::RefreshTokenRequest;
 use client_api::error::{ClientError, Result};
-use client_api::{ApiClient, ClientConfig};
+use client_api::{ApiClient, AuthApi, ClientConfig};
 
 use crate::stores::auth_store::AuthStore;
 
@@ -20,10 +21,11 @@ pub fn get_client() -> ApiClient {
     CLIENT.clone()
 }
 
-/// Token 自动刺新封装器
+/// Token 自动刷新封装器
 ///
 /// 在 service 层调用任意异步 API 时，若返回 `ClientError::Unauthorized`，
-/// 则使用 refresh_token 自动钠新 access_token 并重试一次。
+/// 则尝试用当前 token 刷新获取新 token，刷新成功后重试原请求。
+/// 如果刷新失败，则强制登出。
 ///
 /// # 示例
 /// ```rust
@@ -33,32 +35,43 @@ pub fn get_client() -> ApiClient {
 /// ```
 pub async fn with_auto_refresh<F, Fut, T>(mut auth_store: AuthStore, f: F) -> Result<T>
 where
-    F: Fn(String) -> Fut + Clone,
+    F: Fn(String) -> Fut,
     Fut: std::future::Future<Output = Result<T>>,
 {
-    let token = auth_store.token().unwrap_or_default();
-    match f(token).await {
+    // 优先从全局 API 客户端获取 token（登录时会设置到这里）
+    let token = get_client()
+        .get_token()
+        .or_else(|| auth_store.token())
+        .unwrap_or_default();
+
+    match f(token.clone()).await {
         Err(ClientError::Unauthorized(_)) => {
-            // 尝试用 refresh_token 获取新 access_token
-            let refresh = match auth_store.refresh_token() {
-                Some(r) => r,
-                None => return Err(ClientError::Unauthorized("no refresh token".to_string())),
-            };
-            match super::auth_service::refresh_token(&refresh).await {
-                Ok(resp) => {
-                    auth_store.login(resp.access_token.clone(), resp.refresh_token.clone());
-                    // 用新 token 重试请求
-                    f(resp.access_token).await
+            // Token 过期，尝试刷新
+            match try_refresh_token(&token).await {
+                Ok(new_token) => {
+                    // 刷新成功，更新 token 并重试原请求
+                    get_client().set_token(new_token.clone());
+                    auth_store.login(new_token.clone());
+                    f(new_token).await
                 }
-                Err(e) => {
-                    // 刺新失败，强制登出
+                Err(_) => {
+                    // 刷新失败，强制登出
                     auth_store.logout();
-                    Err(e)
+                    get_client().clear_token();
+                    Err(ClientError::Unauthorized("登录已过期，请重新登录".to_string()))
                 }
             }
         }
         other => other,
     }
+}
+
+/// 尝试刷新 Token
+async fn try_refresh_token(token: &str) -> Result<String> {
+    let client = get_client();
+    let req = RefreshTokenRequest::new(token);
+    let resp = AuthApi::new(&client).refresh_token(&req).await?;
+    Ok(resp.access_token)
 }
 
 /// 将 ClientError 转为用户友好的中文提示文本

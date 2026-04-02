@@ -1,19 +1,21 @@
 use client_api::error::Result;
 use client_api::{
     BillingApi,
-    api::billing::{BillingQueryParams, BillingRecord, BillingStats},
+    api::billing::{UsageRecord, UsageStats},
 };
 
 use super::api_client::get_client;
 
-pub async fn list(params: Option<BillingQueryParams>, token: &str) -> Result<Vec<BillingRecord>> {
+/// 获取用量记录列表（真实数据，来自 usage_logs 表）
+pub async fn list(token: &str) -> Result<Vec<UsageRecord>> {
     let client = get_client();
     BillingApi::new(&client)
-        .list_billing_records(params.as_ref(), token)
+        .list_usage_records(token)
         .await
 }
 
-pub async fn stats(token: &str) -> Result<BillingStats> {
+/// 获取用量统计（真实数据，来自 usage_logs 表聚合）
+pub async fn stats(token: &str) -> Result<UsageStats> {
     let client = get_client();
-    BillingApi::new(&client).get_billing_stats(token).await
+    BillingApi::new(&client).get_usage_stats(token).await
 }

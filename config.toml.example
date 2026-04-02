@@ -129,3 +129,16 @@ timeout_secs = 30
 # KC__EMAIL__SMTP_PASSWORD=your-smtp-password
 # KC__EMAIL__FROM_ADDRESS=noreply@example.com
 # KC__EMAIL__VERIFICATION_BASE_URL=https://api.example.com
+
+# ==================== 默认管理员配置 ====================
+# 首次启动时自动创建的系统管理员账号
+# 生产环境部署后请立即修改默认密码！
+[admin]
+# 默认管理员邮箱
+default_email = "admin@keycompute.local"
+# 默认管理员密码
+default_password = "12345"
+#
+# 环境变量方式：
+# KC__DEFAULT_ADMIN_EMAIL=admin@keycompute.local
+# KC__DEFAULT_ADMIN_PASSWORD=12345

@@ -90,7 +90,7 @@ impl AuthContext {
 
     /// 是否是管理员
     pub fn is_admin(&self) -> bool {
-        self.role == "admin"
+        self.role == "admin" || self.role == "system"
     }
 
     /// 是否是租户管理员

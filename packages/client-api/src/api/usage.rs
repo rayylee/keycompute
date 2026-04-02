@@ -100,12 +100,16 @@ impl UsageQueryParams {
 #[derive(Debug, Clone, Deserialize)]
 pub struct UsageRecord {
     pub id: String,
+    #[serde(rename = "request_id")]
     pub user_id: String,
     pub model: String,
+    #[serde(alias = "input_tokens")]
     pub prompt_tokens: i64,
+    #[serde(alias = "output_tokens")]
     pub completion_tokens: i64,
     pub total_tokens: i64,
-    pub cost: Option<f64>,
+    pub cost: f64,
+    pub status: String,
     pub created_at: String,
 }
 
@@ -114,7 +118,9 @@ pub struct UsageRecord {
 pub struct UsageStats {
     pub total_requests: i64,
     pub total_tokens: i64,
+    #[serde(alias = "total_input_tokens")]
     pub total_prompt_tokens: i64,
+    #[serde(alias = "total_output_tokens")]
     pub total_completion_tokens: i64,
     pub total_cost: f64,
     pub period: String,

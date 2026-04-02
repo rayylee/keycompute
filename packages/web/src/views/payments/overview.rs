@@ -32,18 +32,18 @@ pub fn PaymentsOverview() -> Element {
         .await
     });
 
-    // 账单统计
-    let billing_stats = use_resource(move || async move {
+    // 用量统计（真实数据，来自 usage_logs 表）
+    let usage_stats = use_resource(move || async move {
         with_auto_refresh(auth_store, |token| async move {
             billing_service::stats(&token).await
         })
         .await
     });
 
-    // 账单明细
-    let billing_records = use_resource(move || async move {
+    // 用量明细（真实数据，来自 usage_logs 表）
+    let usage_records = use_resource(move || async move {
         with_auto_refresh(auth_store, |token| async move {
-            billing_service::list(None, &token).await
+            billing_service::list(&token).await
         })
         .await
     });
@@ -71,8 +71,7 @@ pub fn PaymentsOverview() -> Element {
                         None => rsx! { p { class: "stat-value", "加载中..." } },
                         Some(Err(e)) => rsx! { p { class: "stat-value text-error", "错误: {e}" } },
                         Some(Ok(b)) => rsx! {
-                            p { class: "stat-value", "¥ {b.balance:.2}" }
-                            p { class: "stat-label", "{b.currency}" }
+                            p { class: "stat-value", "¥ {b.available_balance}" }
                         },
                     }
                 }
@@ -80,26 +79,43 @@ pub fn PaymentsOverview() -> Element {
                     class: "stat-card",
                     p { class: "stat-title", "冻结金额" }
                     match balance() {
-                        Some(Ok(b)) => rsx! { p { class: "stat-value", "¥ {b.frozen_balance:.2}" } },
+                        Some(Ok(b)) => rsx! { p { class: "stat-value", "¥ {b.frozen_balance}" } },
                         _ => rsx! { p { class: "stat-value", "—" } },
                     }
                 }
-                match billing_stats() {
+                div {
+                    class: "stat-card",
+                    p { class: "stat-title", "总充值" }
+                    match balance() {
+                        Some(Ok(b)) => rsx! { p { class: "stat-value", "¥ {b.total_recharged}" } },
+                        _ => rsx! { p { class: "stat-value", "—" } },
+                    }
+                }
+                div {
+                    class: "stat-card",
+                    p { class: "stat-title", "总消耗" }
+                    match balance() {
+                        Some(Ok(b)) => rsx! { p { class: "stat-value", "¥ {b.total_consumed}" } },
+                        _ => rsx! { p { class: "stat-value", "—" } },
+                    }
+                }
+                match usage_stats() {
                     Some(Ok(s)) => rsx! {
                         div { class: "stat-card",
-                            p { class: "stat-title", "账单总金额" }
-                            p { class: "stat-value", "{s.total_amount:.2} {s.currency}" }
-                            p { class: "stat-label", "统计周期：{s.period}" }
+                            p { class: "stat-title", "用量请求数" }
+                            p { class: "stat-value", "{s.total_requests}" }
                         }
                         div { class: "stat-card",
-                            p { class: "stat-title", "已消耗" }
-                            p { class: "stat-value", "{s.total_paid:.2} {s.currency}" }
-                            p { class: "stat-label", "已完成订单" }
+                            p { class: "stat-title", "输入Tokens" }
+                            p { class: "stat-value", "{s.input_tokens}" }
                         }
                         div { class: "stat-card",
-                            p { class: "stat-title", "待支付" }
-                            p { class: "stat-value", "{s.total_unpaid:.2} {s.currency}" }
-                            p { class: "stat-label", "未完成订单" }
+                            p { class: "stat-title", "输出Tokens" }
+                            p { class: "stat-value", "{s.output_tokens}" }
+                        }
+                        div { class: "stat-card",
+                            p { class: "stat-title", "总费用" }
+                            p { class: "stat-value", "¥{s.total_cost:.2}" }
                         }
                     },
                     _ => rsx! {},
@@ -123,6 +139,7 @@ pub fn PaymentsOverview() -> Element {
                                         tr {
                                             TableHead { "订单号" }
                                             TableHead { "金额" }
+                                            TableHead { "主题" }
                                             TableHead { "状态" }
                                             TableHead { "时间" }
                                         }
@@ -132,7 +149,8 @@ pub fn PaymentsOverview() -> Element {
                                             tr {
                                                 key: "{order.id}",
                                                 td { code { "{order.out_trade_no}" } }
-                                                td { "¥ {order.amount:.2}" }
+                                                td { "¥ {order.amount}" }
+                                                td { "{order.subject}" }
                                                 td {
                                                     Badge {
                                                         variant: payment_status_variant(&order.status),
@@ -150,14 +168,14 @@ pub fn PaymentsOverview() -> Element {
                 }
             }
 
-            // ─── 账单明细 ───
+            // ─── 用量明细 ───
             div { class: "section",
-                h2 { class: "section-title", "账单明细" }
-                match billing_records() {
+                h2 { class: "section-title", "用量明细" }
+                match usage_records() {
                     None => rsx! { p { class: "loading-text", "加载中..." } },
                     Some(Err(e)) => rsx! { p { class: "error-text", "加载失败：{e}" } },
                     Some(Ok(recs)) if recs.is_empty() => rsx! {
-                        p { class: "empty-text", "暂无账单记录" }
+                        p { class: "empty-text", "暂无用量记录" }
                     },
                     Some(Ok(recs)) => rsx! {
                         div { class: "table-container",
@@ -165,11 +183,12 @@ pub fn PaymentsOverview() -> Element {
                                 thead {
                                     tr {
                                         th { "时间" }
-                                        th { "金额" }
-                                        th { "币种" }
-                                        th { "描述" }
+                                        th { "模型" }
+                                        th { "输入Tokens" }
+                                        th { "输出Tokens" }
+                                        th { "总Tokens" }
+                                        th { "费用" }
                                         th { "状态" }
-                                        th { "支付时间" }
                                     }
                                 }
                                 tbody {
@@ -179,16 +198,17 @@ pub fn PaymentsOverview() -> Element {
                                             for r in recs.iter().skip(start).take(PAGE_SIZE) {
                                                 tr {
                                                     td { { format_time(&r.created_at) } }
-                                                    td { "{r.amount:.4}" }
-                                                    td { "{r.currency}" }
-                                                    td { { r.description.as_deref().unwrap_or("—") } }
+                                                    td { "{r.model}" }
+                                                    td { "{r.prompt_tokens}" }
+                                                    td { "{r.completion_tokens}" }
+                                                    td { "{r.total_tokens}" }
+                                                    td { "¥{r.cost:.2}" }
                                                     td {
                                                         span {
-                                                            class: if r.status == "paid" { "badge badge-success" } else { "badge badge-warning" },
+                                                            class: if r.status == "success" { "badge badge-success" } else { "badge badge-warning" },
                                                             "{r.status}"
                                                         }
                                                     }
-                                                    td { { format_time_opt(r.paid_at.as_deref()) } }
                                                 }
                                             }
                                         }

@@ -33,16 +33,16 @@ pub fn DistributionOverview() -> Element {
     });
 
     let total_earnings = match earnings() {
-        Some(Ok(ref e)) => format!("¥{:.2}", e.total_earnings),
+        Some(Ok(ref e)) => format!("¥{}", e.total_earnings),
         Some(Err(_)) => "加载失败".to_string(),
         None => "加载中...".to_string(),
     };
     let available_earnings = match earnings() {
-        Some(Ok(ref e)) => format!("¥{:.2}", e.available_earnings),
+        Some(Ok(ref e)) => format!("¥{}", e.available_earnings),
         _ => "—".to_string(),
     };
     let pending_earnings = match earnings() {
-        Some(Ok(ref e)) => format!("¥{:.2}", e.pending_earnings),
+        Some(Ok(ref e)) => format!("¥{}", e.pending_earnings),
         _ => "—".to_string(),
     };
     let referral_count = match earnings() {
@@ -151,8 +151,8 @@ pub fn DistributionOverview() -> Element {
                                                 }
                                             }
                                             td { { format_time(&r.joined_at) } }
-                                            td { "¥{r.total_spent:.2}" }
-                                            td { "¥{r.earnings_from_referral:.2}" }
+                                            td { "¥{r.total_spent}" }
+                                            td { "¥{r.earnings_from_referral}" }
                                         }
                                     }
                                 },

@@ -62,10 +62,16 @@ pub struct AccountInfo {
     pub id: String,
     pub name: String,
     pub provider: String,
-    pub status: String,
+    pub api_key_preview: String,
+    pub base_url: Option<String>,
+    pub models: Vec<String>,
+    pub rpm_limit: i32,
+    pub current_rpm: i32,
     pub is_active: bool,
+    pub is_healthy: bool,
+    pub priority: i32,
     pub created_at: String,
-    pub updated_at: String,
+    pub last_used_at: Option<String>,
 }
 
 /// 创建账号请求
@@ -75,6 +81,7 @@ pub struct CreateAccountRequest {
     pub provider: String,
     pub api_key: String,
     pub api_base: Option<String>,
+    pub models: Vec<String>,
 }
 
 impl CreateAccountRequest {
@@ -88,11 +95,17 @@ impl CreateAccountRequest {
             provider: provider.into(),
             api_key: api_key.into(),
             api_base: None,
+            models: Vec::new(),
         }
     }
 
     pub fn with_api_base(mut self, api_base: impl Into<String>) -> Self {
         self.api_base = Some(api_base.into());
+        self
+    }
+
+    pub fn with_models(mut self, models: Vec<String>) -> Self {
+        self.models = models;
         self
     }
 }

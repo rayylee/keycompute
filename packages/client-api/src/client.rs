@@ -88,7 +88,10 @@ impl ApiClient {
         let url = self.inner.config.build_url(path);
         let mut builder = self.inner.client.request(method, &url);
 
+        // 优先使用传入的 token，否则使用内部存储的 token
         if let Some(t) = token {
+            builder = builder.header("Authorization", format!("Bearer {}", t));
+        } else if let Some(ref t) = self.get_token() {
             builder = builder.header("Authorization", format!("Bearer {}", t));
         }
 

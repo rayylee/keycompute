@@ -12,3 +12,7 @@ title = "KeyCompute"
 
 [web.watcher]
 reload_html = true
+
+# 开发服务器监听所有网卡（Docker/局域网访问需要）
+[web.dev]
+addr = "0.0.0.0"

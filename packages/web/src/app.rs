@@ -3,6 +3,7 @@ use dioxus::prelude::*;
 use crate::i18n::Lang;
 use crate::router::Route;
 use crate::services::user_service;
+use crate::services::api_client::get_client;
 use crate::stores::{
     auth_store::AuthStore,
     ui_store::{ToastMsg, UiStore},
@@ -27,20 +28,26 @@ pub fn App() -> Element {
     let _ui_store = use_context_provider(|| UiStore::new(toast_signal));
     let _lang = use_context_provider(|| lang_signal);
 
-    // App 启动时，若 localStorage 已有 token，自动拉取用户信息
+    // App 启动时或登录状态变化时，若已有 token，自动拉取用户信息
     use_effect(move || {
-        if let Some(token) = auth_store.token() {
-            spawn(async move {
-                if let Ok(user) = user_service::get_current_user(&token).await {
-                    *user_store.info.write() = Some(UserInfo {
-                        id: user.id.to_string(),
-                        email: user.email,
-                        name: user.name,
-                        role: user.role,
-                        tenant_id: user.tenant_id.to_string(),
-                    });
-                }
-            });
+        // 依赖 auth_store 的认证状态，登录/登出时会重新执行
+        let is_auth = auth_store.is_authenticated();
+        if is_auth {
+            if let Some(token) = auth_store.token() {
+                // 恢复 token 到 API 客户端
+                get_client().set_token(&token);
+                spawn(async move {
+                    if let Ok(user) = user_service::get_current_user(&token).await {
+                        *user_store.info.write() = Some(UserInfo {
+                            id: user.id.to_string(),
+                            email: user.email,
+                            name: user.name,
+                            role: user.role,
+                            tenant_id: user.tenant_id.to_string(),
+                        });
+                    }
+                });
+            }
         }
     });
 
@@ -175,6 +182,8 @@ pub fn AppLayout() -> Element {
                 UserMenuAction::Settings => { nav.push(Route::UserSettings {}); }
                 UserMenuAction::Logout => {
                     auth_store.logout();
+                    // 清除 API 客户端 token
+                    get_client().clear_token();
                     // 清空用户信息，避免登出后旧数据残留
                     *user_store_write.info.write() = None;
                     nav.replace(Route::Login {});

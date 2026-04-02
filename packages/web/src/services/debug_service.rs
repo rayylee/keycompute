@@ -10,9 +10,9 @@ use client_api::{
 
 use super::api_client::get_client;
 
-pub async fn routing(token: &str) -> Result<RoutingDebugInfo> {
+pub async fn routing(model: &str, token: &str) -> Result<RoutingDebugInfo> {
     let client = get_client();
-    DebugApi::new(&client).debug_routing(token).await
+    DebugApi::new(&client).debug_routing(model, token).await
 }
 
 pub async fn provider_health(token: &str) -> Result<ProviderHealthResponse> {

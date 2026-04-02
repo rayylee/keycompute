@@ -24,7 +24,7 @@ pub use pricing::{
 };
 pub use user::{
     ApiKeyInfo, BalanceResponse, UpdateBalanceRequest, UpdateUserRequest, UserDetail,
-    UserQueryParams,
+    UserListResponse, UserQueryParams,
 };
 
 // Re-export admin payment's PaymentQueryParams distinctly
@@ -51,7 +51,7 @@ impl AdminApi {
         &self,
         params: Option<&UserQueryParams>,
         token: &str,
-    ) -> Result<Vec<UserDetail>> {
+    ) -> Result<UserListResponse> {
         let path = if let Some(p) = params {
             format!("/api/v1/users?{}", p.to_query_string())
         } else {

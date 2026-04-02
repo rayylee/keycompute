@@ -22,8 +22,13 @@ impl DebugApi {
     }
 
     /// 获取路由调试信息
-    pub async fn debug_routing(&self, token: &str) -> Result<RoutingDebugInfo> {
-        self.client.get_json("/debug/routing", Some(token)).await
+    /// 
+    /// # 参数
+    /// - `model`: 模型名称，用于模拟路由决策
+    /// - `token`: 认证令牌
+    pub async fn debug_routing(&self, model: &str, token: &str) -> Result<RoutingDebugInfo> {
+        let path = format!("/debug/routing?model={}", urlencoding::encode(model));
+        self.client.get_json(&path, Some(token)).await
     }
 
     /// 获取 Provider 健康状态
@@ -56,15 +61,46 @@ impl DebugApi {
 /// 路由调试信息
 #[derive(Debug, Clone, Deserialize)]
 pub struct RoutingDebugInfo {
-    pub routes: Vec<RouteInfo>,
+    /// 请求 ID
+    pub request_id: String,
+    /// 是否成功路由
+    pub routed: bool,
+    /// 主目标（路由成功时有值）
+    pub primary: Option<RoutingTargetInfo>,
+    /// 备用链路
+    pub fallback_chain: Vec<RoutingTargetInfo>,
+    /// 定价信息
+    pub pricing: PricingInfo,
+    /// Provider 状态列表
+    pub provider_status: Vec<ProviderStatusInfo>,
+    /// 提示信息
+    pub message: Option<String>,
 }
 
-/// 路由信息
+/// 路由目标信息
 #[derive(Debug, Clone, Deserialize)]
-pub struct RouteInfo {
-    pub path: String,
-    pub method: String,
-    pub handler: String,
+pub struct RoutingTargetInfo {
+    pub provider: String,
+    pub account_id: String,
+    pub endpoint: String,
+}
+
+/// 定价信息
+#[derive(Debug, Clone, Deserialize)]
+pub struct PricingInfo {
+    pub model_name: String,
+    pub currency: String,
+    pub input_price_per_1k: String,
+    pub output_price_per_1k: String,
+}
+
+/// Provider 状态信息
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProviderStatusInfo {
+    pub provider: String,
+    pub is_healthy: bool,
+    pub account_count: i64,
+    pub status: String,
 }
 
 /// Provider 健康响应
