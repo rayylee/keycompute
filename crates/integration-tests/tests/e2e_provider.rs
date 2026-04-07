@@ -338,7 +338,7 @@ fn test_provider_ollama() {
         "keycompute-ollama",
         "OllamaProvider::default_endpoint",
         format!("Default endpoint: {}", default_endpoint),
-        default_endpoint == "http://localhost:11434/api/chat",
+        default_endpoint == "https://ollama.com/api/chat",
     );
 
     chain.print_report();
