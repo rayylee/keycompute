@@ -372,9 +372,10 @@ impl BillingService {
             }
         };
 
-        // 确定分成比例（优先使用规则表，否则使用默认值）
-        let default_level1_ratio = Decimal::from(3) / Decimal::from(100); // 3%
-        let default_level2_ratio = Decimal::from(2) / Decimal::from(100); // 2%
+        // 确定分成比例（优先使用规则表，否则使用配置默认值）
+        let dist_config = keycompute_config::DistributionConfig::default();
+        let default_level1_ratio = Decimal::from_f64_retain(dist_config.level1_ratio()).unwrap();
+        let default_level2_ratio = Decimal::from_f64_retain(dist_config.level2_ratio()).unwrap();
 
         let level1_ratio = rules
             .iter()

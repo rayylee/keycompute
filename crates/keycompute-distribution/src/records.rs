@@ -10,6 +10,23 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
+/// 分销模块错误类型
+#[derive(Debug, thiserror::Error)]
+pub enum DistributionError {
+    #[error("数据库错误: {0}")]
+    DatabaseError(String),
+    #[error("数值转换错误: {0}")]
+    ConversionError(String),
+    #[error("配置错误: {0}")]
+    ConfigError(String),
+}
+
+impl From<DistributionError> for keycompute_types::KeyComputeError {
+    fn from(err: DistributionError) -> Self {
+        keycompute_types::KeyComputeError::Internal(err.to_string())
+    }
+}
+
 /// 分销记录
 ///
 /// 对应 distribution_records 表的字段
@@ -128,7 +145,7 @@ impl DistributionService {
         &self,
         ctx: &DistributionContext,
         shares: &[DistributionShare],
-    ) -> keycompute_types::Result<Vec<keycompute_db::DistributionRecord>> {
+    ) -> Result<Vec<keycompute_db::DistributionRecord>, DistributionError> {
         // 生成分销记录
         let records = self.process_distribution(ctx, shares);
 
@@ -138,50 +155,57 @@ impl DistributionService {
             return Ok(vec![]);
         };
 
-        // 转换为数据库请求并保存
-        let mut saved_records = Vec::with_capacity(records.len());
+        // 转换为数据库请求
+        let mut requests = Vec::with_capacity(records.len());
         for record in records {
             let req = CreateDistributionRecordRequest {
                 usage_log_id: record.usage_log_id,
                 tenant_id: record.tenant_id,
                 beneficiary_id: record.beneficiary_id,
-                share_amount: decimal_to_bigdecimal(&record.share_amount),
-                share_ratio: decimal_to_bigdecimal(&record.share_ratio),
+                share_amount: decimal_to_bigdecimal(&record.share_amount)?,
+                share_ratio: decimal_to_bigdecimal(&record.share_ratio)?,
                 level: record.level.clone(),
             };
-
-            match keycompute_db::DistributionRecord::create(pool, &req).await {
-                Ok(saved) => {
-                    tracing::info!(
-                        usage_log_id = %record.usage_log_id,
-                        beneficiary_id = %record.beneficiary_id,
-                        share_amount = %record.share_amount,
-                        "Distribution record saved"
-                    );
-                    saved_records.push(saved);
-                }
-                Err(e) => {
-                    tracing::error!(
-                        usage_log_id = %record.usage_log_id,
-                        error = %e,
-                        "Failed to save distribution record"
-                    );
-                    return Err(keycompute_types::KeyComputeError::DatabaseError(format!(
-                        "Failed to save distribution record: {}",
-                        e
-                    )));
-                }
-            }
+            requests.push(req);
         }
 
-        Ok(saved_records)
+        // 使用批量插入保存所有记录（原子性）
+        match keycompute_db::DistributionRecord::create_many(pool, &requests).await {
+            Ok(saved_records) => {
+                tracing::info!(
+                    usage_log_id = %ctx.usage_log_id,
+                    record_count = saved_records.len(),
+                    "Distribution records saved successfully"
+                );
+                Ok(saved_records)
+            }
+            Err(e) => {
+                tracing::error!(
+                    usage_log_id = %ctx.usage_log_id,
+                    error = %e,
+                    "Failed to save distribution records"
+                );
+                Err(DistributionError::DatabaseError(format!(
+                    "Failed to save distribution records: {}",
+                    e
+                )))
+            }
+        }
     }
 }
 
 /// 将 Decimal 转换为 BigDecimal
-fn decimal_to_bigdecimal(value: &Decimal) -> bigdecimal::BigDecimal {
+///
+/// # Errors
+/// 当字符串解析失败时返回 ConversionError
+fn decimal_to_bigdecimal(value: &Decimal) -> Result<bigdecimal::BigDecimal, DistributionError> {
     let s = value.to_string();
-    s.parse().unwrap_or(bigdecimal::BigDecimal::from(0))
+    s.parse().map_err(|e| {
+        DistributionError::ConversionError(format!(
+            "无法将 Decimal '{}' 转换为 BigDecimal: {}",
+            s, e
+        ))
+    })
 }
 
 /// 分销记录构建器

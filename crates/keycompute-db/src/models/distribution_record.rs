@@ -85,7 +85,8 @@ impl DistributionRecord {
 
     /// 批量创建分销记录（使用事务）
     ///
-    /// 所有记录在同一事务中创建，保证原子性
+    /// 所有记录在同一事务中创建，保证原子性。
+    /// 如果记录已存在（基于唯一约束），则跳过插入。
     pub async fn create_many(
         pool: &sqlx::PgPool,
         requests: &[CreateDistributionRecordRequest],
@@ -98,7 +99,8 @@ impl DistributionRecord {
 
     /// 批量创建分销记录（在现有事务中执行）
     ///
-    /// 用于在调用者已有事务中执行批量插入
+    /// 用于在调用者已有事务中执行批量插入。
+    /// 使用 ON CONFLICT DO NOTHING 实现幂等性，已存在的记录将被跳过。
     pub async fn create_many_tx(
         tx: &mut Transaction<'_, Postgres>,
         requests: &[CreateDistributionRecordRequest],
@@ -106,13 +108,16 @@ impl DistributionRecord {
         let mut records = Vec::with_capacity(requests.len());
 
         for req in requests {
-            let record = sqlx::query_as::<_, DistributionRecord>(
+            // 使用 ON CONFLICT DO NOTHING 实现幂等性
+            // 如果记录已存在（基于 uk_distribution_records_unique 约束），则跳过
+            let record_result = sqlx::query_as::<_, DistributionRecord>(
                 r#"
                 INSERT INTO distribution_records (
                     usage_log_id, tenant_id, beneficiary_id,
                     share_amount, share_ratio, level, status
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+                ON CONFLICT (usage_log_id, beneficiary_id, level) DO NOTHING
                 RETURNING *
                 "#,
             )
@@ -122,10 +127,54 @@ impl DistributionRecord {
             .bind(&req.share_amount)
             .bind(&req.share_ratio)
             .bind(&req.level)
-            .fetch_one(&mut **tx)
+            .fetch_optional(&mut **tx)
             .await?;
 
-            records.push(record);
+            // 如果记录已存在，查询现有记录
+            if let Some(record) = record_result {
+                records.push(record);
+            } else {
+                tracing::debug!(
+                    usage_log_id = %req.usage_log_id,
+                    beneficiary_id = %req.beneficiary_id,
+                    level = %req.level,
+                    "Distribution record already exists, skipping"
+                );
+                // 查询已存在的记录（使用 fetch_optional 避免并发删除导致错误）
+                match sqlx::query_as::<_, DistributionRecord>(
+                    r#"
+                    SELECT * FROM distribution_records
+                    WHERE usage_log_id = $1 AND beneficiary_id = $2 AND level = $3
+                    "#,
+                )
+                .bind(req.usage_log_id)
+                .bind(req.beneficiary_id)
+                .bind(&req.level)
+                .fetch_optional(&mut **tx)
+                .await
+                {
+                    Ok(Some(existing)) => records.push(existing),
+                    Ok(None) => {
+                        // 记录可能已被并发删除，记录警告但不中断流程
+                        tracing::warn!(
+                            usage_log_id = %req.usage_log_id,
+                            beneficiary_id = %req.beneficiary_id,
+                            level = %req.level,
+                            "Distribution record not found after conflict, possibly deleted concurrently"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            usage_log_id = %req.usage_log_id,
+                            beneficiary_id = %req.beneficiary_id,
+                            level = %req.level,
+                            error = %e,
+                            "Failed to fetch existing distribution record"
+                        );
+                        return Err(e.into());
+                    }
+                }
+            }
         }
 
         Ok(records)

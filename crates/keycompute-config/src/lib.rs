@@ -12,6 +12,7 @@ use std::path::Path;
 pub mod auth;
 pub mod crypto;
 pub mod database;
+pub mod distribution;
 pub mod email;
 pub mod gateway;
 pub mod redis;
@@ -20,6 +21,7 @@ pub mod server;
 pub use auth::AuthConfig;
 pub use crypto::CryptoConfig;
 pub use database::DatabaseConfig;
+pub use distribution::DistributionConfig;
 pub use email::EmailConfig;
 pub use gateway::{GatewayConfig, ProxyConfig};
 pub use redis::RedisConfig;
@@ -42,6 +44,8 @@ pub struct AppConfig {
     pub crypto: Option<CryptoConfig>,
     /// 邮件服务配置
     pub email: EmailConfig,
+    /// 分销配置
+    pub distribution: DistributionConfig,
 }
 
 /// 配置加载错误
@@ -167,7 +171,11 @@ impl AppConfig {
             // Gateway 重试策略默认值
             .set_default("gateway.retry.initial_backoff_ms", 100)?
             .set_default("gateway.retry.max_backoff_ms", 10000)?
-            .set_default("gateway.retry.backoff_multiplier", 2.0)?;
+            .set_default("gateway.retry.backoff_multiplier", 2.0)?
+            // 分销默认值
+            .set_default("distribution.default_level1_ratio", 0.03)?
+            .set_default("distribution.default_level2_ratio", 0.02)?
+            .set_default("distribution.max_total_ratio", 0.30)?;
 
         Ok(builder)
     }

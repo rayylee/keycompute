@@ -63,10 +63,25 @@ pub struct RuleEngine {
 
 impl RuleEngine {
     /// 创建新的规则引擎
+    ///
+    /// 使用配置中的默认比例（3% / 2%）
     pub fn new() -> Self {
+        let config = keycompute_config::DistributionConfig::default();
+        Self::from_config(&config)
+    }
+
+    /// 从配置创建规则引擎
+    pub fn from_config(config: &keycompute_config::DistributionConfig) -> Self {
+        // 使用整数运算避免浮点数转换和 unwrap，确保精确性
+        // 3% = 3/100 -> 数值 3，精度 2
+        // 2% = 2/100 -> 数值 2，精度 2
+        let level1_ratio =
+            Decimal::from_i128_with_scale((config.level1_ratio() * 100.0) as i128, 2);
+        let level2_ratio =
+            Decimal::from_i128_with_scale((config.level2_ratio() * 100.0) as i128, 2);
         Self {
-            default_level1_ratio: Decimal::from_f64_retain(0.3).unwrap(), // 默认 3%
-            default_level2_ratio: Decimal::from_f64_retain(0.2).unwrap(), // 默认 2%
+            default_level1_ratio: level1_ratio,
+            default_level2_ratio: level2_ratio,
         }
     }
 
@@ -209,8 +224,10 @@ mod tests {
         let engine = RuleEngine::new();
         let (l1, l2) = engine.default_ratios();
 
-        assert_eq!(l1, Decimal::from_f64_retain(0.3).unwrap());
-        assert_eq!(l2, Decimal::from_f64_retain(0.2).unwrap());
+        // 使用配置中的默认比例 3% / 2%
+        // 使用相同的构造方式避免精度问题
+        assert_eq!(l1, Decimal::from_i128_with_scale(3, 2));
+        assert_eq!(l2, Decimal::from_i128_with_scale(2, 2));
     }
 
     #[test]

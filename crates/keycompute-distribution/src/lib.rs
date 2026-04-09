@@ -8,7 +8,7 @@ pub mod records;
 pub mod rule;
 
 pub use calculator::{DistributionShare, calculate_shares};
-pub use records::{DistributionRecord, DistributionService};
+pub use records::{DistributionError, DistributionRecord, DistributionService};
 pub use rule::{DistributionRule, RuleEngine};
 
 use rust_decimal::Decimal;

@@ -274,6 +274,31 @@ SET level = CASE
     ELSE 'level2'
 END
 WHERE level = 'level1';
+
+-- 清理可能的重复数据（保留最新的一条）
+-- 使用 DELETE 配合子查询删除重复记录
+DELETE FROM distribution_records
+WHERE id IN (
+    SELECT id FROM (
+        SELECT id,
+               ROW_NUMBER() OVER (
+                   PARTITION BY usage_log_id, beneficiary_id, level
+                   ORDER BY created_at DESC, id DESC
+               ) as rn
+        FROM distribution_records
+    ) t
+    WHERE rn > 1
+);
+
+-- 添加唯一约束防止重复分销记录
+-- 同一 usage_log 的同一受益人在同一层级只能有一条记录
+ALTER TABLE distribution_records
+ADD CONSTRAINT uk_distribution_records_unique
+UNIQUE (usage_log_id, beneficiary_id, level);
+
+-- 添加注释说明幂等性保护
+COMMENT ON CONSTRAINT uk_distribution_records_unique ON distribution_records IS 
+'幂等性保护：防止同一 usage_log 对同一受益人的重复分销记录';
 -- 支付订单表
 -- 用于存储用户充值订单记录
 
