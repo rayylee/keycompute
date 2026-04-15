@@ -24,46 +24,46 @@ impl AuthApi {
 
     /// 用户注册
     pub async fn register(&self, req: &RegisterRequest) -> Result<AuthResponse> {
-        self.client.post_json("/auth/register", req, None).await
+        self.client.post_json("/api/v1/auth/register", req, None).await
     }
 
     /// 用户登录
     pub async fn login(&self, req: &LoginRequest) -> Result<AuthResponse> {
-        self.client.post_json("/auth/login", req, None).await
+        self.client.post_json("/api/v1/auth/login", req, None).await
     }
 
     /// 验证邮箱
     pub async fn verify_email(&self, token: &str) -> Result<MessageResponse> {
         self.client
-            .get_json(&format!("/auth/verify-email/{}", token), None)
+            .get_json(&format!("/api/v1/auth/verify-email/{}", token), None)
             .await
     }
 
     /// 忘记密码
     pub async fn forgot_password(&self, req: &ForgotPasswordRequest) -> Result<MessageResponse> {
         self.client
-            .post_json("/auth/forgot-password", req, None)
+            .post_json("/api/v1/auth/forgot-password", req, None)
             .await
     }
 
     /// 重置密码
     pub async fn reset_password(&self, req: &ResetPasswordRequest) -> Result<MessageResponse> {
         self.client
-            .post_json("/auth/reset-password", req, None)
+            .post_json("/api/v1/auth/reset-password", req, None)
             .await
     }
 
     /// 验证重置令牌
     pub async fn verify_reset_token(&self, token: &str) -> Result<MessageResponse> {
         self.client
-            .get_json(&format!("/auth/verify-reset-token/{}", token), None)
+            .get_json(&format!("/api/v1/auth/verify-reset-token/{}", token), None)
             .await
     }
 
     /// 刷新令牌
     pub async fn refresh_token(&self, req: &RefreshTokenRequest) -> Result<AuthResponse> {
         self.client
-            .post_json("/auth/refresh-token", req, None)
+            .post_json("/api/v1/auth/refresh-token", req, None)
             .await
     }
 
@@ -73,7 +73,7 @@ impl AuthApi {
         req: &ResendVerificationRequest,
     ) -> Result<MessageResponse> {
         self.client
-            .post_json("/auth/resend-verification", req, None)
+            .post_json("/api/v1/auth/resend-verification", req, None)
             .await
     }
 }

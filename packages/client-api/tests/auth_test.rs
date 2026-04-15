@@ -20,7 +20,7 @@ async fn test_login_success() {
 
     // Mock 登录成功响应
     Mock::given(method("POST"))
-        .and(path("/auth/login"))
+        .and(path("/api/v1/auth/login"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "user_id": fixtures::TEST_USER_ID,
             "tenant_id": "tenant_001",
@@ -51,7 +51,7 @@ async fn test_login_invalid_credentials() {
 
     // Mock 401 响应
     Mock::given(method("POST"))
-        .and(path("/auth/login"))
+        .and(path("/api/v1/auth/login"))
         .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
             "error": "Invalid email or password"
         })))
@@ -76,7 +76,7 @@ async fn test_register_success() {
     });
 
     Mock::given(method("POST"))
-        .and(path("/auth/register"))
+        .and(path("/api/v1/auth/register"))
         .and(body_json(&expected_body))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "user_id": "user_new_001",
@@ -104,7 +104,7 @@ async fn test_verify_email_success() {
     let auth_api = AuthApi::new(&client);
 
     Mock::given(method("GET"))
-        .and(path("/auth/verify-email/valid_token_123"))
+        .and(path("/api/v1/auth/verify-email/valid_token_123"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "message": "Email verified successfully"
         })))
@@ -123,7 +123,7 @@ async fn test_forgot_password_success() {
     let auth_api = AuthApi::new(&client);
 
     Mock::given(method("POST"))
-        .and(path("/auth/forgot-password"))
+        .and(path("/api/v1/auth/forgot-password"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "message": "Password reset email sent"
         })))
@@ -142,7 +142,7 @@ async fn test_reset_password_success() {
     let auth_api = AuthApi::new(&client);
 
     Mock::given(method("POST"))
-        .and(path("/auth/reset-password"))
+        .and(path("/api/v1/auth/reset-password"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "message": "Password reset successfully"
         })))
@@ -161,7 +161,7 @@ async fn test_refresh_token_success() {
     let auth_api = AuthApi::new(&client);
 
     Mock::given(method("POST"))
-        .and(path("/auth/refresh-token"))
+        .and(path("/api/v1/auth/refresh-token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "user_id": fixtures::TEST_USER_ID,
             "tenant_id": "tenant_001",
@@ -188,7 +188,7 @@ async fn test_resend_verification_success() {
     let auth_api = AuthApi::new(&client);
 
     Mock::given(method("POST"))
-        .and(path("/auth/resend-verification"))
+        .and(path("/api/v1/auth/resend-verification"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "message": "Verification email resent"
         })))
@@ -207,7 +207,7 @@ async fn test_verify_reset_token_success() {
     let auth_api = AuthApi::new(&client);
 
     Mock::given(method("GET"))
-        .and(path("/auth/verify-reset-token/valid_reset_token"))
+        .and(path("/api/v1/auth/verify-reset-token/valid_reset_token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "message": "Token is valid"
         })))

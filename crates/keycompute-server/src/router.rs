@@ -109,18 +109,18 @@ use tower_http::trace::TraceLayer;
 pub fn create_router(state: AppState) -> Router {
     // ==================== 1. 认证路由（不需要限流） ====================
     let auth_routes = Router::new()
-        .route("/auth/register", post(register_handler))
-        .route("/auth/login", post(login_handler))
-        .route("/auth/verify-email/{token}", get(verify_email_handler))
-        .route("/auth/forgot-password", post(forgot_password_handler))
-        .route("/auth/reset-password", post(reset_password_handler))
+        .route("/api/v1/auth/register", post(register_handler))
+        .route("/api/v1/auth/login", post(login_handler))
+        .route("/api/v1/auth/verify-email/{token}", get(verify_email_handler))
+        .route("/api/v1/auth/forgot-password", post(forgot_password_handler))
+        .route("/api/v1/auth/reset-password", post(reset_password_handler))
         .route(
-            "/auth/verify-reset-token/{token}",
+            "/api/v1/auth/verify-reset-token/{token}",
             get(verify_reset_token_handler),
         )
-        .route("/auth/refresh-token", post(refresh_token_handler))
+        .route("/api/v1/auth/refresh-token", post(refresh_token_handler))
         .route(
-            "/auth/resend-verification",
+            "/api/v1/auth/resend-verification",
             post(resend_verification_handler),
         );
 

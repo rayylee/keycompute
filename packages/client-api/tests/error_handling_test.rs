@@ -17,7 +17,7 @@ async fn test_401_unauthorized() {
     let auth_api = AuthApi::new(&client);
 
     Mock::given(method("POST"))
-        .and(path("/auth/login"))
+        .and(path("/api/v1/auth/login"))
         .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
             "error": "Invalid credentials"
         })))
@@ -87,7 +87,7 @@ async fn test_429_rate_limited() {
     let auth_api = AuthApi::new(&client);
 
     Mock::given(method("POST"))
-        .and(path("/auth/login"))
+        .and(path("/api/v1/auth/login"))
         .respond_with(
             ResponseTemplate::new(429)
                 .insert_header("Retry-After", "60")
@@ -214,7 +214,7 @@ async fn test_error_helper_methods() {
     let auth_api = AuthApi::new(&client);
 
     Mock::given(method("POST"))
-        .and(path("/auth/login"))
+        .and(path("/api/v1/auth/login"))
         .respond_with(ResponseTemplate::new(401))
         .mount(&mock_server)
         .await;

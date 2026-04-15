@@ -679,6 +679,7 @@ dependencies = [
  "tokio-test",
  "urlencoding",
  "uuid",
+ "web-sys",
  "wiremock",
 ]
 
