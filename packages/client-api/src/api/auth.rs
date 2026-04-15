@@ -24,7 +24,9 @@ impl AuthApi {
 
     /// 用户注册
     pub async fn register(&self, req: &RegisterRequest) -> Result<AuthResponse> {
-        self.client.post_json("/api/v1/auth/register", req, None).await
+        self.client
+            .post_json("/api/v1/auth/register", req, None)
+            .await
     }
 
     /// 用户登录

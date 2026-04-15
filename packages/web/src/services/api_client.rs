@@ -21,6 +21,36 @@ pub fn get_client() -> ApiClient {
     CLIENT.clone()
 }
 
+/// 获取对外展示用的 OpenAI 兼容 API 基址
+///
+/// - 如果配置了绝对 `API_BASE_URL`，优先使用配置值并归一化到 `/v1`
+/// - 如果当前是同域反代部署（`API_BASE_URL=""`），在浏览器中读取当前站点 origin
+pub fn public_openai_api_base_url() -> String {
+    let client = get_client();
+    let configured = client.config().base_url.trim_end_matches('/');
+
+    if configured.is_empty() {
+        #[cfg(target_arch = "wasm32")]
+        {
+            if let Some(window) = web_sys::window()
+                && let Ok(origin) = window.location().origin()
+            {
+                return format!("{}/v1", origin.trim_end_matches('/'));
+            }
+        }
+
+        return "http://localhost:8080/v1".to_string();
+    }
+
+    let root = configured
+        .trim_end_matches("/auth")
+        .trim_end_matches("/api/v1")
+        .trim_end_matches("/v1")
+        .trim_end_matches('/');
+
+    format!("{}/v1", root)
+}
+
 /// Token 自动刷新封装器
 ///
 /// 在 service 层调用任意异步 API 时，若返回 `ClientError::Unauthorized`，

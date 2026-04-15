@@ -131,13 +131,8 @@ pub fn ApiKeyList() -> Element {
             // 新建成功后展示完整密钥（仅一次）
             if let Some(key) = new_key_value() {
                 {
-                    // 使用编译时配置的 API_BASE_URL，移除末尾的 /v1 后缀（如果有）
-                    let api_url = crate::services::api_client::get_client()
-                        .config()
-                        .base_url
-                        .trim_end_matches('/')
-                        .trim_end_matches("/v1")
-                        .to_string();
+                    // 同域部署时从浏览器地址解析完整 origin，避免示例里只显示相对路径 /v1
+                    let api_url = crate::services::api_client::public_openai_api_base_url();
 
                     // 获取第一个模型作为示例
                     let sample_model = models()
@@ -147,7 +142,7 @@ pub fn ApiKeyList() -> Element {
 
                     // 生成要复制的文本
                     let example_text = format!(
-                        r#"API_URL="{}/v1"
+                        r#"API_URL="{}"
 API_KEY="{}"
 API_MODEL="{}""#,
                         api_url, key, sample_model

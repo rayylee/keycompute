@@ -111,8 +111,14 @@ pub fn create_router(state: AppState) -> Router {
     let auth_routes = Router::new()
         .route("/api/v1/auth/register", post(register_handler))
         .route("/api/v1/auth/login", post(login_handler))
-        .route("/api/v1/auth/verify-email/{token}", get(verify_email_handler))
-        .route("/api/v1/auth/forgot-password", post(forgot_password_handler))
+        .route(
+            "/api/v1/auth/verify-email/{token}",
+            get(verify_email_handler),
+        )
+        .route(
+            "/api/v1/auth/forgot-password",
+            post(forgot_password_handler),
+        )
         .route("/api/v1/auth/reset-password", post(reset_password_handler))
         .route(
             "/api/v1/auth/verify-reset-token/{token}",
