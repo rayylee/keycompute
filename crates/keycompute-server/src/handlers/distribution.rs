@@ -292,26 +292,30 @@ fn string_to_bigdecimal(value: &str) -> Result<BigDecimal> {
 }
 
 /// 获取基础 URL
-/// 优先从 Host 头获取，其次从环境变量 APP_BASE_URL 获取，最后使用默认值
+/// 优先从反向代理转发的 Host 获取，其次从 Host 头获取，再次从环境变量
+/// APP_BASE_URL 获取，最后使用默认值。
 fn get_base_url(headers: &axum::http::HeaderMap) -> String {
-    // 尝试从 Host 头获取
-    if let Some(host) = headers.get("host").and_then(|h| h.to_str().ok()) {
-        // 根据请求协议判断 http 或 https
-        // 如果有 X-Forwarded-Proto 头，使用它；否则默认 http（开发环境）
-        let scheme = headers
-            .get("x-forwarded-proto")
-            .and_then(|h| h.to_str().ok())
-            .unwrap_or("http");
-        return format!(
-            "{}://{}:8080",
-            scheme,
-            host.split(':').next().unwrap_or(host)
-        );
+    let scheme = headers
+        .get("x-forwarded-proto")
+        .and_then(|h| h.to_str().ok())
+        .map(|value| value.split(',').next().unwrap_or(value).trim())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("http");
+
+    let forwarded_host = headers
+        .get("x-forwarded-host")
+        .and_then(|h| h.to_str().ok())
+        .or_else(|| headers.get("host").and_then(|h| h.to_str().ok()))
+        .map(|value| value.split(',').next().unwrap_or(value).trim())
+        .filter(|value| !value.is_empty());
+
+    if let Some(host) = forwarded_host {
+        return format!("{}://{}", scheme, host);
     }
 
     // 其次从环境变量获取
     if let Ok(url) = std::env::var("APP_BASE_URL") {
-        return url;
+        return url.trim_end_matches('/').to_string();
     }
 
     // 最后使用默认值
@@ -780,5 +784,28 @@ mod tests {
         let json = serde_json::to_string(&stats).unwrap();
         assert!(json.contains("100.00"));
         assert!(json.contains("CNY"));
+    }
+
+    #[test]
+    fn test_get_base_url_uses_host_without_hardcoded_port() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("host", "ug2ltzf5j4-80.cnb.run".parse().unwrap());
+        headers.insert("x-forwarded-proto", "http".parse().unwrap());
+
+        let base_url = get_base_url(&headers);
+
+        assert_eq!(base_url, "http://ug2ltzf5j4-80.cnb.run");
+    }
+
+    #[test]
+    fn test_get_base_url_prefers_forwarded_host() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("host", "keycompute-server:3000".parse().unwrap());
+        headers.insert("x-forwarded-host", "app.example.com".parse().unwrap());
+        headers.insert("x-forwarded-proto", "https".parse().unwrap());
+
+        let base_url = get_base_url(&headers);
+
+        assert_eq!(base_url, "https://app.example.com");
     }
 }
