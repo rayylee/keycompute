@@ -254,19 +254,20 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/billing/stats", get(get_billing_stats))
         .layer(from_fn_with_state(state.clone(), rate_limit_middleware));
 
-    // ==================== 6. 调试接口（仅开发/Admin 使用） ====================
+    // ==================== 6. 调试接口（仅 Admin 使用） ====================
     let debug_routes = Router::new()
-        .route("/debug/routing", get(debug_routing))
-        .route("/debug/providers", get(get_provider_health))
-        .route("/debug/providers/reset", post(reset_health))
+        .route("/api/v1/debug/routing", get(debug_routing))
+        .route("/api/v1/debug/providers", get(get_provider_health))
+        .route("/api/v1/debug/providers/reset", post(reset_health))
         .route(
-            "/debug/accounts/{account_id}/cooldown",
+            "/api/v1/debug/accounts/{account_id}/cooldown",
             post(set_account_cooldown),
         )
-        .route("/debug/gateway/status", get(get_gateway_status))
-        .route("/debug/gateway/stats", get(get_execution_stats))
-        .route("/debug/gateway/health", post(check_provider_health))
-        .layer(from_fn_with_state(state.clone(), rate_limit_middleware));
+        .route("/api/v1/debug/gateway/status", get(get_gateway_status))
+        .route("/api/v1/debug/gateway/stats", get(get_execution_stats))
+        .route("/api/v1/debug/gateway/health", post(check_provider_health))
+        .layer(from_fn_with_state(state.clone(), rate_limit_middleware))
+        .layer(from_fn_with_state(state.clone(), admin_auth_middleware));
 
     // ==================== 7. 支付 API ====================
     // 用户支付路由（需要认证 + 限流）

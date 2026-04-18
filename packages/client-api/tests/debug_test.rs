@@ -14,7 +14,7 @@ async fn test_debug_routing_success() {
     let debug_api = DebugApi::new(&client);
 
     Mock::given(method("GET"))
-        .and(path("/debug/routing"))
+        .and(path("/api/v1/debug/routing"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "request_id": "550e8400-e29b-41d4-a716-446655440000",
             "routed": true,
@@ -60,7 +60,7 @@ async fn test_get_provider_health_success() {
     let debug_api = DebugApi::new(&client);
 
     Mock::given(method("GET"))
-        .and(path("/debug/providers"))
+        .and(path("/api/v1/debug/providers"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "healthy_providers": ["openai", "anthropic"],
             "account_count": 3
@@ -85,7 +85,7 @@ async fn test_get_gateway_status_success() {
     let debug_api = DebugApi::new(&client);
 
     Mock::given(method("GET"))
-        .and(path("/debug/gateway/status"))
+        .and(path("/api/v1/debug/gateway/status"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "available": true,
             "providers": [
@@ -122,7 +122,7 @@ async fn test_get_gateway_stats_success() {
     let debug_api = DebugApi::new(&client);
 
     Mock::given(method("GET"))
-        .and(path("/debug/gateway/stats"))
+        .and(path("/api/v1/debug/gateway/stats"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "total_requests": 100000,
             "successful_requests": 95000,
@@ -160,24 +160,27 @@ async fn test_check_provider_health_success() {
     let debug_api = DebugApi::new(&client);
 
     Mock::given(method("POST"))
-        .and(path("/debug/gateway/health"))
+        .and(path("/api/v1/debug/gateway/health"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "checked_providers": ["openai", "anthropic", "gemini"],
-            "healthy_providers": ["openai", "anthropic"],
-            "unhealthy_providers": ["gemini"]
+            "provider": "openai",
+            "healthy": true,
+            "latency_ms": 150,
+            "error": null,
+            "models": ["gpt-4o", "gpt-4.1"]
         })))
         .mount(&mock_server)
         .await;
 
     let result = debug_api
-        .check_provider_health(fixtures::TEST_ACCESS_TOKEN)
+        .check_provider_health("openai", fixtures::TEST_ACCESS_TOKEN)
         .await;
 
     assert!(result.is_ok());
     let check = result.unwrap();
-    assert_eq!(check.checked_providers.len(), 3);
-    assert_eq!(check.healthy_providers.len(), 2);
-    assert_eq!(check.unhealthy_providers.len(), 1);
+    assert_eq!(check.provider, "openai");
+    assert!(check.healthy);
+    assert_eq!(check.latency_ms, Some(150));
+    assert_eq!(check.models.len(), 2);
 }
 
 #[tokio::test]
@@ -186,7 +189,7 @@ async fn test_debug_endpoints_unauthorized() {
     let debug_api = DebugApi::new(&client);
 
     Mock::given(method("GET"))
-        .and(path("/debug/routing"))
+        .and(path("/api/v1/debug/routing"))
         .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
             "error": "Unauthorized"
         })))
@@ -204,7 +207,7 @@ async fn test_debug_endpoints_forbidden() {
     let debug_api = DebugApi::new(&client);
 
     Mock::given(method("GET"))
-        .and(path("/debug/providers"))
+        .and(path("/api/v1/debug/providers"))
         .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
             "error": "Admin access required"
         })))
