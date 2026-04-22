@@ -97,8 +97,8 @@ backoff_multiplier = 2.0
 [email]
 # SMTP 服务器地址
 smtp_host = "smtp.example.com"
-# SMTP 端口（默认 587）
-smtp_port = 587
+# SMTP 端口（默认 465）
+smtp_port = 465
 # SMTP 用户名
 smtp_username = "noreply@example.com"
 # SMTP 密码

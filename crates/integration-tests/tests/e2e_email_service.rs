@@ -279,7 +279,7 @@ fn test_email_service_config() {
     // 1. 创建配置
     let config = EmailConfig {
         smtp_host: "smtp.example.com".to_string(),
-        smtp_port: 587,
+        smtp_port: 465,
         smtp_username: "test@example.com".to_string(),
         smtp_password: "password123".to_string(),
         from_address: "noreply@example.com".to_string(),

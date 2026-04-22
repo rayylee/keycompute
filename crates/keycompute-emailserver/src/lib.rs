@@ -84,6 +84,13 @@ impl TransportState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SmtpSecurityMode {
+    StartTls,
+    ImplicitTls,
+    Plain,
+}
+
 #[derive(Clone)]
 struct EmailRuntime {
     config: EmailConfig,
@@ -151,6 +158,18 @@ fn smtp_timeout(timeout_secs: u64) -> Option<Duration> {
     }
 }
 
+fn smtp_security_mode(config: &EmailConfig) -> SmtpSecurityMode {
+    if config.use_tls {
+        if config.smtp_port == 465 {
+            SmtpSecurityMode::ImplicitTls
+        } else {
+            SmtpSecurityMode::StartTls
+        }
+    } else {
+        SmtpSecurityMode::Plain
+    }
+}
+
 fn build_password_reset_url(app_base_url: &str, token: &str) -> Result<String, EmailError> {
     let mut parsed = validate_public_app_base_url(app_base_url)?;
     let current_path = parsed.path().trim_end_matches('/');
@@ -210,28 +229,48 @@ impl EmailService {
         // lettre 0.11 的 pool 配置在启用 pool feature 后自动生效
         // 使用默认连接池配置（最大 10 个连接）
         let timeout = smtp_timeout(config.timeout_secs);
-        let transport = if config.use_tls {
-            match AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_host) {
-                Ok(builder) => builder
+        let transport = match smtp_security_mode(config) {
+            SmtpSecurityMode::StartTls => {
+                match AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_host) {
+                    Ok(builder) => builder
+                        .credentials(creds)
+                        .port(config.smtp_port)
+                        .timeout(timeout)
+                        .build(),
+                    Err(e) => {
+                        let msg = format!(
+                            "无法为 SMTP 主机 '{}' 构建 STARTTLS 连接: {}",
+                            config.smtp_host, e
+                        );
+                        tracing::error!(error = %msg, "邮件服务配置错误");
+                        return TransportState::InvalidConfig(msg);
+                    }
+                }
+            }
+            SmtpSecurityMode::ImplicitTls => {
+                match AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_host) {
+                    Ok(builder) => builder
+                        .credentials(creds)
+                        .port(config.smtp_port)
+                        .timeout(timeout)
+                        .build(),
+                    Err(e) => {
+                        let msg = format!(
+                            "无法为 SMTP 主机 '{}' 构建 SMTPS 连接: {}",
+                            config.smtp_host, e
+                        );
+                        tracing::error!(error = %msg, "邮件服务配置错误");
+                        return TransportState::InvalidConfig(msg);
+                    }
+                }
+            }
+            SmtpSecurityMode::Plain => {
+                AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&config.smtp_host)
                     .credentials(creds)
                     .port(config.smtp_port)
                     .timeout(timeout)
-                    .build(),
-                Err(e) => {
-                    let msg = format!(
-                        "无法为 SMTP 主机 '{}' 构建 STARTTLS 连接: {}",
-                        config.smtp_host, e
-                    );
-                    tracing::error!(error = %msg, "邮件服务配置错误");
-                    return TransportState::InvalidConfig(msg);
-                }
+                    .build()
             }
-        } else {
-            AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&config.smtp_host)
-                .credentials(creds)
-                .port(config.smtp_port)
-                .timeout(timeout)
-                .build()
         };
 
         TransportState::Ready(transport)
@@ -527,7 +566,7 @@ mod tests {
     fn test_config() -> EmailConfig {
         EmailConfig {
             smtp_host: "smtp.example.com".to_string(),
-            smtp_port: 587,
+            smtp_port: 465,
             smtp_username: "test@example.com".to_string(),
             smtp_password: "testpass".to_string(),
             from_address: "noreply@example.com".to_string(),
@@ -638,6 +677,32 @@ mod tests {
     fn test_smtp_timeout_zero_disables_timeout() {
         assert_eq!(smtp_timeout(0), None);
         assert_eq!(smtp_timeout(30), Some(Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn test_smtp_security_mode_prefers_starttls_for_standard_submission() {
+        let mut config = test_config();
+        config.smtp_port = 587;
+        config.use_tls = true;
+
+        assert_eq!(smtp_security_mode(&config), SmtpSecurityMode::StartTls);
+    }
+
+    #[test]
+    fn test_smtp_security_mode_uses_implicit_tls_for_port_465() {
+        let mut config = test_config();
+        config.smtp_port = 465;
+        config.use_tls = true;
+
+        assert_eq!(smtp_security_mode(&config), SmtpSecurityMode::ImplicitTls);
+    }
+
+    #[test]
+    fn test_smtp_security_mode_plain_when_tls_disabled() {
+        let mut config = test_config();
+        config.use_tls = false;
+
+        assert_eq!(smtp_security_mode(&config), SmtpSecurityMode::Plain);
     }
 
     #[tokio::test]

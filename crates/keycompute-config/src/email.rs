@@ -12,7 +12,7 @@ use serde::Deserialize;
 pub struct EmailConfig {
     /// SMTP 服务器地址
     pub smtp_host: String,
-    /// SMTP 端口（默认 587）
+    /// SMTP 端口（默认 465）
     #[serde(default = "default_smtp_port")]
     pub smtp_port: u16,
     /// SMTP 用户名
@@ -32,7 +32,7 @@ pub struct EmailConfig {
 }
 
 fn default_smtp_port() -> u16 {
-    587
+    465
 }
 
 fn default_use_tls() -> bool {
@@ -47,7 +47,7 @@ impl Default for EmailConfig {
     fn default() -> Self {
         Self {
             smtp_host: "localhost".to_string(),
-            smtp_port: 587,
+            smtp_port: 465,
             smtp_username: String::new(),
             smtp_password: String::new(),
             from_address: "noreply@localhost".to_string(),
@@ -92,7 +92,7 @@ mod tests {
     #[test]
     fn test_default_email_config() {
         let config = EmailConfig::default();
-        assert_eq!(config.smtp_port, 587);
+        assert_eq!(config.smtp_port, 465);
         assert!(config.use_tls);
         assert_eq!(config.timeout_secs, 30);
     }
